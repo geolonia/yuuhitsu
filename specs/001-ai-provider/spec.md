@@ -3,7 +3,7 @@
 **Feature Branch**: `001-ai-provider`
 **Created**: 2026-02-11
 **Status**: Draft
-**Input**: External AI API abstraction layer enabling engineers to perform translation, document generation, document sync, research, dead-link fixing, and test scaffolding without requiring the Shogun multi-agent environment. Uses OpenRouter as a unified cloud API gateway (supporting Claude, GPT, Gemini, Mistral, Llama, etc.) and Ollama for local model execution.
+**Input**: External AI API abstraction layer enabling engineers to perform translation, document generation, document sync, research, dead-link fixing, and test scaffolding without requiring the Shogun multi-agent environment. Uses direct API integration with each provider — Claude (via @anthropic-ai/sdk), Gemini (via @google/genai), and Ollama (via OpenAI-compatible SDK for local execution). Provider switching is a 1-line config change.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -17,7 +17,7 @@ As an engineer, I want to translate a Markdown document from one language to ano
 
 **Acceptance Scenarios**:
 
-1. **Given** a Markdown file `README.md` in English and a config file specifying OpenRouter as the provider with model `anthropic/claude-sonnet-4-5-20250929`, **When** the user runs `ai-provider translate --input README.md --lang ja`, **Then** a translated Japanese Markdown file is produced preserving the original Markdown structure (headings, links, code blocks).
+1. **Given** a Markdown file `README.md` in English and a config file specifying `provider: claude` with model `claude-sonnet-4-5-20250929`, **When** the user runs `ai-provider translate --input README.md --lang ja`, **Then** a translated Japanese Markdown file is produced preserving the original Markdown structure (headings, links, code blocks).
 2. **Given** a Markdown file in Japanese, **When** the user runs `ai-provider translate --input docs.md --lang en`, **Then** an English translation is produced.
 3. **Given** an invalid API key in the configuration, **When** the user runs the translate command, **Then** a clear error message is displayed indicating authentication failure, without exposing the API key.
 4. **Given** a very large Markdown file (>50KB), **When** the user runs the translate command, **Then** the system shows streaming progress and completes successfully, splitting the content into manageable chunks if needed.
@@ -41,18 +41,18 @@ As an engineer, I want to generate a documentation page from source code or a sp
 
 ### User Story 3 - Switch AI Provider via Configuration (Priority: P2)
 
-As an engineer, I want to switch between AI providers (OpenRouter for cloud models, Ollama for local models) by editing a configuration file, so that I can use whichever model best fits my needs or budget without changing my workflow.
+As an engineer, I want to switch between AI providers (Claude, Gemini, Ollama) by editing a configuration file, so that I can use whichever model best fits my needs or budget without changing my workflow.
 
-**Why this priority**: Provider flexibility is a core architectural requirement. OpenRouter provides a unified API gateway to all major cloud models (Claude, GPT, Gemini, Mistral, Llama, etc.), eliminating the need for individual provider adapters. Combined with Ollama for local execution, this covers all use cases with minimal implementation complexity.
+**Why this priority**: Provider flexibility is a core architectural requirement. Each provider uses its official SDK for direct API access — Claude via @anthropic-ai/sdk, Gemini via @google/genai, Ollama via OpenAI-compatible SDK. A common adapter interface wraps each SDK, so switching providers is a 1-line config change. Adding a new provider requires only implementing one adapter file.
 
 **Independent Test**: Can be tested by changing the provider and model in the config file and verifying the same translate command works with each supported configuration.
 
 **Acceptance Scenarios**:
 
-1. **Given** a config file specifying `provider: openrouter` with model `anthropic/claude-sonnet-4-5-20250929`, **When** the user runs any ai-provider command, **Then** the request is sent to the OpenRouter API (`https://openrouter.ai/api/v1`).
-2. **Given** a config file specifying `provider: openrouter` with model `google/gemini-2.0-flash-001`, **When** the user runs the same command, **Then** the request is routed through OpenRouter to the Gemini model and produces equivalent output.
+1. **Given** a config file specifying `provider: claude` with model `claude-sonnet-4-5-20250929`, **When** the user runs any ai-provider command, **Then** the request is sent directly to the Anthropic API via @anthropic-ai/sdk.
+2. **Given** a config file specifying `provider: gemini` with model `gemini-2.0-flash`, **When** the user runs the same command, **Then** the request is sent directly to the Google Gemini API via @google/genai.
 3. **Given** a config file set to `provider: ollama` with model `llama3.2`, **When** the user runs the same command with a local Ollama server running, **Then** the request is handled locally without any external API call.
-4. **Given** a config file with an unsupported provider name, **When** the user runs any command, **Then** a clear error lists the supported providers (openrouter, ollama).
+4. **Given** a config file with an unsupported provider name, **When** the user runs any command, **Then** a clear error lists the supported providers (claude, gemini, ollama).
 
 ---
 
@@ -82,7 +82,7 @@ As an engineer, I want to perform web research on a technical topic and get a st
 **Acceptance Scenarios**:
 
 1. **Given** a research query, **When** the user runs `ai-provider research --query "Compare Vite vs Webpack in 2026" --output report.md`, **Then** a structured Markdown report with sections (Summary, Comparison, Recommendations, Sources) is produced.
-2. **Given** a provider/model combination that does not support web search (e.g., Ollama local models), **When** the user runs the research command, **Then** a clear message explains the limitation and suggests using an OpenRouter model that supports it.
+2. **Given** a provider/model combination that does not support web search (e.g., Ollama local models), **When** the user runs the research command, **Then** a clear message explains the limitation and suggests using a cloud provider (Claude or Gemini) that supports it.
 
 ---
 
@@ -124,15 +124,15 @@ As an engineer, I want to generate a test suite skeleton from my source code, so
 - What happens when the network is unavailable? The system detects the connection failure and suggests checking network connectivity, or switching to a local provider (Ollama).
 - What happens when the Ollama server is not running? A clear error message instructs the user to start the Ollama server.
 - What happens when the config file is missing? The system displays an error with instructions on how to create a default config, optionally offering an `ai-provider init` command.
-- What happens when the `OPENROUTER_API_KEY` environment variable is not set? The system identifies the missing variable and provides setup instructions for obtaining an OpenRouter API key.
+- What happens when a required API key environment variable (`ANTHROPIC_API_KEY` for Claude, `GOOGLE_API_KEY` for Gemini) is not set? The system identifies the missing variable and provides setup instructions for obtaining the appropriate API key.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: System MUST support two AI providers — OpenRouter (unified cloud API gateway supporting Claude, GPT, Gemini, Mistral, Llama, and other models via a single endpoint) and Ollama (local model execution) — through a unified interface.
+- **FR-001**: System MUST support three AI providers — Claude (via @anthropic-ai/sdk for Anthropic models), Gemini (via @google/genai for Google models), and Ollama (via OpenAI-compatible SDK for local model execution) — through a unified adapter interface. Adding a new provider MUST require only implementing a single adapter file.
 - **FR-002**: System MUST allow provider selection and model specification via a YAML configuration file (`ai-provider.config.yaml`).
-- **FR-003**: System MUST manage API keys through environment variables (`OPENROUTER_API_KEY` for OpenRouter) or `.env` files, never storing keys in the configuration file itself. Ollama requires no API key.
+- **FR-003**: System MUST manage API keys through environment variables (`ANTHROPIC_API_KEY` for Claude, `GOOGLE_API_KEY` for Gemini) or `.env` files, never storing keys in the configuration file itself. Ollama requires no API key.
 - **FR-004**: System MUST provide a CLI interface with subcommands for each task type (translate, generate-docs, sync-docs, research, fix-links, generate-tests).
 - **FR-005**: System MUST use task-specific prompt templates that are customizable by the user.
 - **FR-006**: System MUST implement automatic retry with exponential backoff for rate-limited or transiently failed API requests (max 3 retries).
@@ -147,10 +147,10 @@ As an engineer, I want to generate a test suite skeleton from my source code, so
 
 ### Key Entities
 
-- **Provider**: Represents an AI service backend (OpenRouter or Ollama). Each provider has a name, API endpoint, authentication method, and rate-limit characteristics. OpenRouter acts as a unified gateway to all cloud models; Ollama provides local model execution.
+- **Provider**: Represents an AI service backend (Claude, Gemini, or Ollama). Each provider has a name, SDK, authentication method, and rate-limit characteristics. Claude and Gemini connect directly to their respective APIs via official SDKs; Ollama provides local model execution via OpenAI-compatible API.
 - **Task**: A unit of work requested by the user (translate, generate-docs, etc.). Each task has a type, input file(s), output destination, and an associated prompt template.
 - **PromptTemplate**: A reusable text template with placeholders for input content, target language, output format, etc. Templates are stored as files and can be overridden per-project.
-- **Configuration**: The user's settings including selected provider (`openrouter` or `ollama`), model (e.g., `anthropic/claude-sonnet-4-5-20250929` for OpenRouter, `llama3.2` for Ollama), API key environment variable reference, default output paths, and logging preferences. Stored as a YAML file.
+- **Configuration**: The user's settings including selected provider (`claude`, `gemini`, or `ollama`), model (e.g., `claude-sonnet-4-5-20250929` for Claude, `gemini-2.0-flash` for Gemini, `llama3.2` for Ollama), API key environment variable reference, default output paths, and logging preferences. Stored as a YAML file.
 - **ExecutionLog**: A record of each API call including timestamp, provider, model, token usage, cost estimate, latency, and success/failure status.
 
 ## Success Criteria *(mandatory)*
@@ -158,7 +158,7 @@ As an engineer, I want to generate a test suite skeleton from my source code, so
 ### Measurable Outcomes
 
 - **SC-001**: A user can install the tool and translate their first document within 5 minutes of setup (including config creation).
-- **SC-002**: Switching between providers (OpenRouter ↔ Ollama) or between cloud models (e.g., Claude ↔ Gemini via OpenRouter) requires only editing 1-2 lines in the config file; no code changes or reinstallation needed.
+- **SC-002**: Switching between providers (Claude ↔ Gemini ↔ Ollama) requires only editing 1-2 lines in the config file (`provider` and `model`); no code changes or reinstallation needed.
 - **SC-003**: All 6 task types (translate, generate-docs, sync-docs, research, fix-links, generate-tests) are executable via CLI with consistent command patterns.
 - **SC-004**: The system handles API rate-limiting transparently; users experience automatic retry without manual intervention for transient failures.
 - **SC-005**: Translated Markdown files pass a structural comparison check (same heading count, same link count, same code block count) against the original.
