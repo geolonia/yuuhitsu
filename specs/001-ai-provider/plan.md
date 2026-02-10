@@ -5,12 +5,12 @@
 
 ## Summary
 
-A CLI tool (`ai-provider`) that provides a unified interface for AI-powered document operations (translation, documentation generation, sync, research, link fixing, test scaffolding). Uses OpenRouter as a unified cloud API gateway (one endpoint for Claude, GPT, Gemini, Mistral, etc.) and Ollama for local model execution. Both providers implement the OpenAI Chat Completions API format, enabling a single HTTP client with configurable base URL and auth — no provider-specific adapters needed.
+A CLI tool (`ai-provider`) that provides a unified interface for AI-powered document operations (translation, documentation generation, sync, research, link fixing, test scaffolding). Uses direct API integration with each provider — Claude (via @anthropic-ai/sdk), Gemini (via @google/genai), and Ollama (via OpenAI-compatible SDK for local execution). A common adapter interface wraps each SDK, enabling seamless provider switching via a 1-line config change. Adding a new provider requires only implementing a single adapter file.
 
 ## Technical Context
 
 **Language/Version**: TypeScript 5.x on Node.js 20+
-**Primary Dependencies**: `openai` (npm, OpenAI-compatible SDK), `commander` (CLI), `yaml` (config), `dotenv` (.env support), `vitest` (tests)
+**Primary Dependencies**: `@anthropic-ai/sdk` (Claude), `@google/genai` (Gemini), `openai` (Ollama via OpenAI-compatible API), `commander` (CLI), `yaml` (config), `dotenv` (.env support), `vitest` (tests)
 **Storage**: File-based (config YAML, log JSON lines, prompt templates as .md files)
 **Testing**: vitest (unit + integration)
 **Target Platform**: WSL2/Linux, macOS (cross-platform via Node.js)
@@ -25,7 +25,7 @@ A CLI tool (`ai-provider`) that provides a unified interface for AI-powered docu
 
 Constitution is not yet configured (template state). No gates to enforce. Proceeding with research phase.
 
-**Post-Phase 1 Re-check**: Design uses single-project structure, 2 provider configs (not adapters), standard CLI patterns. No complexity violations detected.
+**Post-Phase 1 Re-check**: Design uses single-project structure, 3 provider adapters (Claude, Gemini, Ollama) behind a common interface, standard CLI patterns. No complexity violations detected.
 
 ## Project Structure
 
@@ -51,8 +51,11 @@ src/
 │   ├── index.ts         # CLI entry point (commander setup)
 │   └── commands/        # Subcommand handlers (translate, generate-docs, etc.)
 ├── provider/
-│   ├── index.ts         # Provider factory (returns configured OpenAI client)
-│   └── config.ts        # Provider config resolution (URL, auth, headers)
+│   ├── index.ts         # Provider factory (returns configured adapter)
+│   ├── interface.ts     # Common AIProvider adapter interface
+│   ├── claude.ts        # Claude adapter (@anthropic-ai/sdk)
+│   ├── gemini.ts        # Gemini adapter (@google/genai)
+│   └── ollama.ts        # Ollama adapter (openai SDK, OpenAI-compatible)
 ├── tasks/
 │   ├── translate.ts     # Translation task logic
 │   ├── generate-docs.ts # Doc generation task logic
