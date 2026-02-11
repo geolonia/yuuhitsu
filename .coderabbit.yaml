@@ -1,0 +1,12 @@
+language: en
+reviews:
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "src/**"
+      instructions: "TypeScript source code. Check for type safety, error handling, and provider abstraction patterns."
+    - path: "tests/**"
+      instructions: "Test files. Verify test coverage, meaningful assertions, and no skipped tests."
+    - path: "specs/**"
+      instructions: "Specification documents. Check for completeness, consistency, and accuracy."
