@@ -1,0 +1,33 @@
+{
+  "name": "ai-provider",
+  "version": "0.1.0",
+  "description": "AI Provider Abstraction Layer - unified CLI for AI-powered document operations",
+  "type": "module",
+  "bin": {
+    "ai-provider": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": ["ai", "cli", "translation", "documentation"],
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@google/genai": "^0.7.0",
+    "openai": "^4.77.0",
+    "commander": "^13.0.0",
+    "yaml": "^2.7.0",
+    "dotenv": "^16.4.0",
+    "chalk": "^5.4.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0"
+  }
+}
