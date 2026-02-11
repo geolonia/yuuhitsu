@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { formatError } from "../errors.js";
+import { translateCommand } from "./commands/translate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -30,8 +31,8 @@ program
   .option("--dry-run", "Show what would be done without making API calls")
   .option("--verbose", "Enable verbose output");
 
-// Commands will be registered here in future phases
-// e.g., translate, generate-docs, sync-docs, research, fix-links, generate-tests
+// Register commands
+program.addCommand(translateCommand);
 
 program.parseAsync(process.argv).catch((err) => {
   process.stderr.write(formatError(err) + "\n");
