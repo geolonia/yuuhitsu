@@ -5,6 +5,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { formatError } from "../errors.js";
 import { translateCommand } from "./commands/translate.js";
+import { initCommand } from "./commands/init.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -32,6 +33,7 @@ program
   .option("--verbose", "Enable verbose output");
 
 // Register commands
+program.addCommand(initCommand);
 program.addCommand(translateCommand);
 
 program.parseAsync(process.argv).catch((err) => {
