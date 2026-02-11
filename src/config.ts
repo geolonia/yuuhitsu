@@ -21,9 +21,11 @@ export async function loadConfig(
   configPath: string,
   envDir?: string
 ): Promise<AppConfig> {
-  // Load .env if envDir is provided
+  // Load .env - from envDir if provided, otherwise from cwd
   if (envDir) {
     dotenvConfig({ path: join(envDir, ".env") });
+  } else {
+    dotenvConfig(); // Loads from cwd by default
   }
 
   let content: string;

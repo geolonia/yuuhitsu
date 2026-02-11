@@ -135,9 +135,13 @@ describe("Translate CLI Integration", () => {
       writeFileSync(inputPath, "# Test\n");
 
       const originalKey = process.env.ANTHROPIC_API_KEY;
+      const originalCwd = process.cwd();
       delete process.env.ANTHROPIC_API_KEY;
 
       try {
+        // Change to temp directory so loadConfig doesn't load .env from project root
+        process.chdir(tempDir);
+
         const result = await runCommand([
           "translate", "--input", inputPath, "--lang", "ja", "--config", configPath,
         ]);
@@ -145,6 +149,7 @@ describe("Translate CLI Integration", () => {
         expect(result.exitCode).not.toBe(0);
         expect(result.stderr).toMatch(/ANTHROPIC_API_KEY/i);
       } finally {
+        process.chdir(originalCwd);
         if (originalKey) process.env.ANTHROPIC_API_KEY = originalKey;
       }
     });
