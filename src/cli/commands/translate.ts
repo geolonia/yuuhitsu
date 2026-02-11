@@ -32,7 +32,7 @@ export const translateCommand = new Command("translate")
       // Check if input is a glob pattern
       if (isGlobPattern(opts.input)) {
         // Batch translation mode
-        const provider = dryRun ? null : createProvider(config.provider, config.model);
+        const provider = dryRun ? undefined : createProvider(config.provider, config.model);
 
         if (dryRun) {
           process.stdout.write(
@@ -49,7 +49,7 @@ export const translateCommand = new Command("translate")
         await batchTranslate({
           pattern: opts.input,
           targetLang: opts.lang,
-          provider: provider as any,
+          provider,
           outputDir: opts.outputDir,
           dryRun,
           verbose,

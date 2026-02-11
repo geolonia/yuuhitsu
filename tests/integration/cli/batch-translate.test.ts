@@ -181,12 +181,6 @@ describe("Batch Translate CLI Integration", () => {
   });
 
   describe("Error handling", () => {
-    it("should continue on single file error and show summary", async () => {
-      // This test would require mocking translateFile to fail on specific files
-      // For now, we test the structure is in place
-      expect(true).toBe(true);
-    });
-
     it("should show summary with success/failure counts", async () => {
       createConfig(tempDir);
 

@@ -143,9 +143,7 @@ describe("batch-translate task", () => {
     });
 
     it("should accept progress callback", () => {
-      const callback = (progress: BatchProgress) => {
-        console.log(progress);
-      };
+      const callback = (_progress: BatchProgress) => {};
 
       const opts: BatchTranslateOptions = {
         pattern: "docs/**/*.md",

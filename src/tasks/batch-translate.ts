@@ -1,5 +1,5 @@
 import fg from "fast-glob";
-import { dirname, join, relative, parse } from "path";
+import { dirname, join, relative, parse, isAbsolute, sep } from "path";
 import { mkdirSync } from "fs";
 import chalk from "chalk";
 import type { AIProvider } from "../provider/index.js";
@@ -16,7 +16,7 @@ export interface BatchProgress {
 export interface BatchTranslateOptions {
   pattern: string;
   targetLang: string;
-  provider: AIProvider;
+  provider?: AIProvider; // Optional when dryRun is true
   outputDir?: string;
   inputBase?: string;
   onProgress?: (progress: BatchProgress) => void;
@@ -58,6 +58,23 @@ export function generateOutputPath(opts: {
   // If outputDir is provided, preserve directory structure
   if (outputDir && inputBase) {
     const relativePath = relative(inputBase, inputPath);
+
+    // Security: Prevent path traversal
+    // Reject paths that are absolute or try to escape via ".."
+    if (isAbsolute(relativePath)) {
+      throw new Error(`Path traversal detected: ${inputPath} is outside ${inputBase} (absolute path)`);
+    }
+
+    if (relativePath.startsWith(`..${sep}`) || relativePath === "..") {
+      throw new Error(`Path traversal detected: ${inputPath} tries to escape ${inputBase}`);
+    }
+
+    // Check for ".." in path segments
+    const segments = relativePath.split(sep);
+    if (segments.includes("..")) {
+      throw new Error(`Path traversal detected: ${inputPath} contains ".." segments`);
+    }
+
     return join(outputDir, relativePath);
   }
 
@@ -167,6 +184,10 @@ export async function batchTranslate(
       );
       progress.succeeded++;
     } else {
+      if (!provider) {
+        throw new Error("Provider is required when dryRun is false");
+      }
+
       try {
         process.stdout.write(
           `${progressPrefix} Translating ${inputPath}...\n`
