@@ -16,6 +16,12 @@
   },
   "keywords": ["ai", "cli", "translation", "documentation"],
   "license": "MIT",
+  "files": [
+    "dist",
+    "src/templates",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/genai": "^0.7.0",
