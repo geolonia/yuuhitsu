@@ -1,6 +1,6 @@
 # Tasks: AI Provider Abstraction Layer
 
-**Input**: Design documents from `/specs/001-ai-provider/`
+**Input**: Design documents from `/specs/001-yuuhitsu/`
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/
 
 **Tests**: Test tasks included (test-first development per殿の指示).
@@ -17,7 +17,7 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Initialize Node.js project with `package.json` at repository root (name: ai-provider, type: module, bin: ai-provider)
+- [ ] T001 Initialize Node.js project with `package.json` at repository root (name: yuuhitsu, type: module, bin: yuuhitsu)
 - [ ] T002 Install dependencies: `@anthropic-ai/sdk`, `@google/genai`, `openai` (Ollama用), `commander`, `yaml`, `dotenv`, `chalk`
 - [ ] T003 Install dev dependencies: `vitest`, `typescript`, `tsx`, `@types/node`
 - [ ] T004 [P] Create `tsconfig.json` with strict mode, ESM output, paths config
@@ -33,7 +33,7 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T008 Implement config loader in `src/config.ts` — load `ai-provider.config.yaml`, validate provider/model fields, resolve .env with dotenv
+- [ ] T008 Implement config loader in `src/config.ts` — load `yuuhitsu.config.yaml`, validate provider/model fields, resolve .env with dotenv
 - [ ] T009 Unit test for config loader in `tests/unit/config/config.test.ts` — valid config, missing file, invalid provider, missing model
 - [ ] T010 Implement common AIProvider interface in `src/provider/interface.ts` — define chat() and chatStream() methods that all adapters must implement
 - [ ] T010a Implement Claude adapter in `src/provider/claude.ts` — use @anthropic-ai/sdk, read ANTHROPIC_API_KEY from env, implement AIProvider interface
@@ -55,7 +55,7 @@
 
 **Goal**: Translate a Markdown document preserving structure, with streaming progress
 
-**Independent Test**: Run `ai-provider translate --input sample.md --lang ja` and verify output file has correct Japanese content with preserved Markdown structure
+**Independent Test**: Run `yuuhitsu translate --input sample.md --lang ja` and verify output file has correct Japanese content with preserved Markdown structure
 
 ### Tests for User Story 1
 
@@ -80,7 +80,7 @@
 
 **Goal**: Generate VitePress-compatible documentation from source code or spec files
 
-**Independent Test**: Run `ai-provider generate-docs --input sample.ts --format vitepress` and verify documentation output
+**Independent Test**: Run `yuuhitsu generate-docs --input sample.ts --format vitepress` and verify documentation output
 
 ### Tests for User Story 2
 
@@ -110,7 +110,7 @@
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Implement `init` CLI command in `src/cli/commands/init.ts` — generate default `ai-provider.config.yaml` with commented examples for claude/gemini/ollama per contracts/cli-interface.md
+- [ ] T032 [US3] Implement `init` CLI command in `src/cli/commands/init.ts` — generate default `yuuhitsu.config.yaml` with commented examples for claude/gemini/ollama per contracts/cli-interface.md
 - [ ] T033 [US3] Add provider validation error messages — clear error listing supported providers (claude, gemini, ollama) when unsupported provider specified
 - [ ] T034 [US3] Add API key missing error — specific message with setup instructions for ANTHROPIC_API_KEY (Claude) and GOOGLE_API_KEY (Gemini) per edge case spec
 
@@ -122,7 +122,7 @@
 
 **Goal**: Convert external Markdown to VitePress format with frontmatter and sidebar metadata
 
-**Independent Test**: Run `ai-provider sync-docs --input external/README.md --output docs/guide/external.md`
+**Independent Test**: Run `yuuhitsu sync-docs --input external/README.md --output docs/guide/external.md`
 
 ### Tests for User Story 4
 
@@ -142,7 +142,7 @@
 
 **Goal**: Web research with structured Markdown report output
 
-**Independent Test**: Run `ai-provider research --query "Compare X vs Y" --output report.md`
+**Independent Test**: Run `yuuhitsu research --query "Compare X vs Y" --output report.md`
 
 ### Tests for User Story 5
 
@@ -162,7 +162,7 @@
 
 **Goal**: Detect and optionally fix broken links in documentation
 
-**Independent Test**: Run `ai-provider fix-links --input docs/ --check-external`
+**Independent Test**: Run `yuuhitsu fix-links --input docs/ --check-external`
 
 ### Tests for User Story 6
 
@@ -182,7 +182,7 @@
 
 **Goal**: Generate test suite skeleton from source code
 
-**Independent Test**: Run `ai-provider generate-tests --input src/utils.ts --framework vitest`
+**Independent Test**: Run `yuuhitsu generate-tests --input src/utils.ts --framework vitest`
 
 ### Tests for User Story 7
 

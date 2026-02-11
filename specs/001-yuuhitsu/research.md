@@ -1,6 +1,6 @@
 # Research: AI Provider Abstraction Layer
 
-**Feature Branch**: `001-ai-provider` | **Date**: 2026-02-11
+**Feature Branch**: `001-yuuhitsu` | **Date**: 2026-02-11
 
 ## Decision 1: Cloud API Gateway
 
@@ -39,7 +39,7 @@ This means the "provider adapter" is just a config object (base URL + auth + hea
 
 **Decision**: TypeScript on Node.js.
 
-**Rationale**: Spec requires npm global install (`npm install -g ai-provider`). TypeScript provides type safety for the config/provider interfaces. Node.js has mature HTTP client and CLI libraries.
+**Rationale**: Spec requires npm global install (`npm install -g yuuhitsu`). TypeScript provides type safety for the config/provider interfaces. Node.js has mature HTTP client and CLI libraries.
 
 **Key dependencies**:
 - `commander` — CLI argument parsing (mature, well-documented)

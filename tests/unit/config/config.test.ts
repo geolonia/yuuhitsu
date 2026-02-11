@@ -8,7 +8,7 @@ describe("Config Loader", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = join(tmpdir(), `ai-provider-test-${Date.now()}`);
+    tempDir = join(tmpdir(), `yuuhitsu-test-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
   });
 
@@ -17,7 +17,7 @@ describe("Config Loader", () => {
   });
 
   it("should load a valid config with claude provider", async () => {
-    const configPath = join(tempDir, "ai-provider.config.yaml");
+    const configPath = join(tempDir, "yuuhitsu.config.yaml");
     writeFileSync(
       configPath,
       `provider: claude\nmodel: claude-sonnet-4-5-20250929\n`
@@ -28,7 +28,7 @@ describe("Config Loader", () => {
   });
 
   it("should load a valid config with gemini provider", async () => {
-    const configPath = join(tempDir, "ai-provider.config.yaml");
+    const configPath = join(tempDir, "yuuhitsu.config.yaml");
     writeFileSync(
       configPath,
       `provider: gemini\nmodel: gemini-2.0-flash\n`
@@ -39,7 +39,7 @@ describe("Config Loader", () => {
   });
 
   it("should load a valid config with ollama provider", async () => {
-    const configPath = join(tempDir, "ai-provider.config.yaml");
+    const configPath = join(tempDir, "yuuhitsu.config.yaml");
     writeFileSync(
       configPath,
       `provider: ollama\nmodel: llama3.2\n`
@@ -55,30 +55,30 @@ describe("Config Loader", () => {
   });
 
   it("should throw error for invalid provider", async () => {
-    const configPath = join(tempDir, "ai-provider.config.yaml");
+    const configPath = join(tempDir, "yuuhitsu.config.yaml");
     writeFileSync(configPath, `provider: openrouter\nmodel: some-model\n`);
     await expect(loadConfig(configPath)).rejects.toThrow(/unsupported provider/i);
   });
 
   it("should throw error when model is missing", async () => {
-    const configPath = join(tempDir, "ai-provider.config.yaml");
+    const configPath = join(tempDir, "yuuhitsu.config.yaml");
     writeFileSync(configPath, `provider: claude\n`);
     await expect(loadConfig(configPath)).rejects.toThrow(/model/i);
   });
 
   it("should load optional log configuration", async () => {
-    const configPath = join(tempDir, "ai-provider.config.yaml");
+    const configPath = join(tempDir, "yuuhitsu.config.yaml");
     writeFileSync(
       configPath,
-      `provider: claude\nmodel: claude-sonnet-4-5-20250929\nlog:\n  enabled: true\n  path: ./ai-provider.log\n`
+      `provider: claude\nmodel: claude-sonnet-4-5-20250929\nlog:\n  enabled: true\n  path: ./yuuhitsu.log\n`
     );
     const config = await loadConfig(configPath);
     expect(config.log?.enabled).toBe(true);
-    expect(config.log?.path).toBe("./ai-provider.log");
+    expect(config.log?.path).toBe("./yuuhitsu.log");
   });
 
   it("should load .env variables via dotenv", async () => {
-    const configPath = join(tempDir, "ai-provider.config.yaml");
+    const configPath = join(tempDir, "yuuhitsu.config.yaml");
     const envPath = join(tempDir, ".env");
     writeFileSync(configPath, `provider: claude\nmodel: claude-sonnet-4-5-20250929\n`);
     writeFileSync(envPath, `ANTHROPIC_API_KEY=test-key-123\n`);

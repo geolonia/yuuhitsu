@@ -1,9 +1,9 @@
-# Quickstart: ai-provider
+# Quickstart: yuuhitsu
 
 ## Installation
 
 ```bash
-npm install -g ai-provider
+npm install -g yuuhitsu
 ```
 
 ## Setup
@@ -11,10 +11,10 @@ npm install -g ai-provider
 1. Create a config file:
 
 ```bash
-ai-provider init
+yuuhitsu init
 ```
 
-This generates `ai-provider.config.yaml`:
+This generates `yuuhitsu.config.yaml`:
 
 ```yaml
 provider: openrouter
@@ -34,12 +34,12 @@ Get your key at: https://openrouter.ai/settings/keys
 ### Translate a document
 
 ```bash
-ai-provider translate --input README.md --lang ja
+yuuhitsu translate --input README.md --lang ja
 ```
 
 ### Switch to a different model
 
-Edit `ai-provider.config.yaml`:
+Edit `yuuhitsu.config.yaml`:
 
 ```yaml
 provider: openrouter
@@ -64,5 +64,5 @@ model: llama3.2
 Preview what would happen without making API calls:
 
 ```bash
-ai-provider translate --input README.md --lang ja --dry-run
+yuuhitsu translate --input README.md --lang ja --dry-run
 ```

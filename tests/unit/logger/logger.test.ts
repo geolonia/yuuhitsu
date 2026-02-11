@@ -9,9 +9,9 @@ describe("ExecutionLogger", () => {
   let logPath: string;
 
   beforeEach(() => {
-    tempDir = join(tmpdir(), `ai-provider-logger-test-${Date.now()}`);
+    tempDir = join(tmpdir(), `yuuhitsu-logger-test-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
-    logPath = join(tempDir, "ai-provider.log");
+    logPath = join(tempDir, "yuuhitsu.log");
   });
 
   afterEach(() => {

@@ -1,11 +1,11 @@
 # Implementation Plan: AI Provider Abstraction Layer
 
-**Branch**: `001-ai-provider` | **Date**: 2026-02-11 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/001-ai-provider/spec.md`
+**Branch**: `001-yuuhitsu` | **Date**: 2026-02-11 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/001-yuuhitsu/spec.md`
 
 ## Summary
 
-A CLI tool (`ai-provider`) that provides a unified interface for AI-powered document operations (translation, documentation generation, sync, research, link fixing, test scaffolding). Uses direct API integration with each provider — Claude (via @anthropic-ai/sdk), Gemini (via @google/genai), and Ollama (via OpenAI-compatible SDK for local execution). A common adapter interface wraps each SDK, enabling seamless provider switching via a 1-line config change. Adding a new provider requires only implementing a single adapter file.
+A CLI tool (`yuuhitsu`) that provides a unified interface for AI-powered document operations (translation, documentation generation, sync, research, link fixing, test scaffolding). Uses direct API integration with each provider — Claude (via @anthropic-ai/sdk), Gemini (via @google/genai), and Ollama (via OpenAI-compatible SDK for local execution). A common adapter interface wraps each SDK, enabling seamless provider switching via a 1-line config change. Adding a new provider requires only implementing a single adapter file.
 
 ## Technical Context
 
@@ -32,7 +32,7 @@ Constitution is not yet configured (template state). No gates to enforce. Procee
 ### Documentation (this feature)
 
 ```text
-specs/001-ai-provider/
+specs/001-yuuhitsu/
 ├── plan.md              # This file
 ├── research.md          # Phase 0: OpenRouter/Ollama API research
 ├── data-model.md        # Phase 1: Entity definitions

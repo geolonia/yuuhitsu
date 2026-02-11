@@ -5,10 +5,10 @@
 ### Global Options
 
 ```
-ai-provider [command] [options]
+yuuhitsu [command] [options]
 
 Global Options:
-  --config <path>    Config file path (default: ./ai-provider.config.yaml)
+  --config <path>    Config file path (default: ./yuuhitsu.config.yaml)
   --dry-run          Show what would be done without making API calls
   --verbose          Enable verbose output
   --version          Show version
@@ -18,7 +18,7 @@ Global Options:
 ### translate
 
 ```
-ai-provider translate --input <file> --lang <code> [--output <file>]
+yuuhitsu translate --input <file> --lang <code> [--output <file>]
 
 Options:
   --input   <file>   Input Markdown file (required)
@@ -31,7 +31,7 @@ Options:
 ### generate-docs
 
 ```
-ai-provider generate-docs --input <file> [--format <format>] [--output <file>]
+yuuhitsu generate-docs --input <file> [--format <format>] [--output <file>]
 
 Options:
   --input   <file>     Source file (required)
@@ -42,7 +42,7 @@ Options:
 ### sync-docs
 
 ```
-ai-provider sync-docs --input <path> --output <path>
+yuuhitsu sync-docs --input <path> --output <path>
 
 Options:
   --input   <path>   Input file or directory (required)
@@ -52,7 +52,7 @@ Options:
 ### research
 
 ```
-ai-provider research --query <text> [--output <file>]
+yuuhitsu research --query <text> [--output <file>]
 
 Options:
   --query   <text>   Research query (required)
@@ -62,7 +62,7 @@ Options:
 ### fix-links
 
 ```
-ai-provider fix-links --input <path> [--check-external] [--fix]
+yuuhitsu fix-links --input <path> [--check-external] [--fix]
 
 Options:
   --input           <path>   Input file or directory (required)
@@ -73,7 +73,7 @@ Options:
 ### generate-tests
 
 ```
-ai-provider generate-tests --input <file> [--framework <name>] [--output <file>]
+yuuhitsu generate-tests --input <file> [--framework <name>] [--output <file>]
 
 Options:
   --input      <file>   Source file (required)
@@ -84,13 +84,13 @@ Options:
 ### init
 
 ```
-ai-provider init [--provider <name>]
+yuuhitsu init [--provider <name>]
 
 Options:
   --provider  <name>   Default provider: openrouter, ollama (default: openrouter)
 ```
 
-Generates `ai-provider.config.yaml` with commented examples.
+Generates `yuuhitsu.config.yaml` with commented examples.
 
 ## Error Output Format
 

@@ -15,7 +15,7 @@ describe("Translate CLI Integration", () => {
   let stdoutSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    tempDir = join(tmpdir(), `ai-provider-cli-test-${Date.now()}`);
+    tempDir = join(tmpdir(), `yuuhitsu-cli-test-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
     exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
       throw new Error("process.exit called");
@@ -32,7 +32,7 @@ describe("Translate CLI Integration", () => {
   });
 
   function createConfig(dir: string, provider = "claude", model = "claude-sonnet-4-5-20250929") {
-    const configPath = join(dir, "ai-provider.config.yaml");
+    const configPath = join(dir, "yuuhitsu.config.yaml");
     writeFileSync(configPath, `provider: ${provider}\nmodel: ${model}\n`);
     return configPath;
   }
@@ -47,7 +47,7 @@ describe("Translate CLI Integration", () => {
     // Build a fresh parent program to provide global options
     const parent = new Command();
     parent
-      .option("--config <path>", "Config file path", "./ai-provider.config.yaml")
+      .option("--config <path>", "Config file path", "./yuuhitsu.config.yaml")
       .option("--dry-run", "Show what would be done without making API calls")
       .option("--verbose", "Enable verbose output");
 
@@ -64,13 +64,13 @@ describe("Translate CLI Integration", () => {
     // We import and invoke translateCommand's action via parent.parseAsync
     const program2 = new Command();
     program2
-      .option("--config <path>", "Config file path", "./ai-provider.config.yaml")
+      .option("--config <path>", "Config file path", "./yuuhitsu.config.yaml")
       .option("--dry-run", "Show what would be done without making API calls")
       .option("--verbose", "Enable verbose output");
     program2.addCommand(translateCommand);
 
     try {
-      await program2.parseAsync(["node", "ai-provider", ...args]);
+      await program2.parseAsync(["node", "yuuhitsu", ...args]);
       const out = getOutput();
       return { ...out, exitCode: 0 };
     } catch {

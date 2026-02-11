@@ -1,6 +1,6 @@
 # Data Model: AI Provider Abstraction Layer
 
-**Feature Branch**: `001-ai-provider` | **Date**: 2026-02-11
+**Feature Branch**: `001-yuuhitsu` | **Date**: 2026-02-11
 
 ## Entities
 
@@ -19,7 +19,7 @@ Represents the connection settings for an AI backend.
 
 ### AppConfig
 
-Top-level configuration loaded from `ai-provider.config.yaml`.
+Top-level configuration loaded from `yuuhitsu.config.yaml`.
 
 | Field           | Type           | Required | Default                  | Description                             |
 |----------------|----------------|----------|--------------------------|-----------------------------------------|
@@ -30,14 +30,14 @@ Top-level configuration loaded from `ai-provider.config.yaml`.
 | outputDir      | string         | No       | `.`                      | Default output directory                |
 | log            | LogConfig      | No       | —                        | Logging settings                        |
 | referer        | string         | No       | —                        | HTTP-Referer header for OpenRouter      |
-| appTitle       | string         | No       | `"ai-provider"`          | X-Title header for OpenRouter           |
+| appTitle       | string         | No       | `"yuuhitsu"`          | X-Title header for OpenRouter           |
 
 ### LogConfig
 
 | Field    | Type    | Required | Default              | Description               |
 |---------|---------|----------|----------------------|---------------------------|
 | enabled | boolean | No       | `true`               | Enable/disable logging    |
-| path    | string  | No       | `./ai-provider.log`  | Log file path             |
+| path    | string  | No       | `./yuuhitsu.log`  | Log file path             |
 
 ### Task
 
@@ -87,7 +87,7 @@ Task ──produces──▶ ExecutionLog (one per API call, may be multiple for
 ## Config File Example
 
 ```yaml
-# ai-provider.config.yaml
+# yuuhitsu.config.yaml
 provider: openrouter
 model: anthropic/claude-sonnet-4-5-20250929
 
@@ -104,5 +104,5 @@ model: anthropic/claude-sonnet-4-5-20250929
 # Optional: logging
 log:
   enabled: true
-  path: ./ai-provider.log
+  path: ./yuuhitsu.log
 ```

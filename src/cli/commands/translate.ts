@@ -13,7 +13,7 @@ export const translateCommand = new Command("translate")
   .option("--output <file>", "Output file path (default: <input>.<lang>.md)")
   .action(async (opts, cmd) => {
     const globalOpts = cmd.parent?.opts() ?? {};
-    const configPath: string = globalOpts.config ?? "./ai-provider.config.yaml";
+    const configPath: string = globalOpts.config ?? "./yuuhitsu.config.yaml";
     const dryRun: boolean = globalOpts.dryRun ?? false;
     const verbose: boolean = globalOpts.verbose ?? false;
 

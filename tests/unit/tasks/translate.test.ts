@@ -23,7 +23,7 @@ describe("Translate Task", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = join(tmpdir(), `ai-provider-translate-test-${Date.now()}`);
+    tempDir = join(tmpdir(), `yuuhitsu-translate-test-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
   });
 

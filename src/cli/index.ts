@@ -22,12 +22,12 @@ function getVersion(): string {
 const program = new Command();
 
 program
-  .name("ai-provider")
+  .name("yuuhitsu")
   .description(
-    "AI Provider Abstraction Layer - unified CLI for AI-powered document operations"
+    "右筆 (Yuuhitsu) - AI-powered document operations CLI"
   )
   .version(getVersion())
-  .option("--config <path>", "Config file path", "./ai-provider.config.yaml")
+  .option("--config <path>", "Config file path", "./yuuhitsu.config.yaml")
   .option("--dry-run", "Show what would be done without making API calls")
   .option("--verbose", "Enable verbose output");
 

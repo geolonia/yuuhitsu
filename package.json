@@ -1,10 +1,10 @@
 {
-  "name": "ai-provider",
+  "name": "yuuhitsu",
   "version": "0.1.0",
-  "description": "AI Provider Abstraction Layer - unified CLI for AI-powered document operations",
+  "description": "右筆 (Yuuhitsu) - AI-powered document operations CLI. Translate, generate, and sync documents using Claude, Gemini, or Ollama.",
   "type": "module",
   "bin": {
-    "ai-provider": "./dist/cli/index.js"
+    "yuuhitsu": "./dist/cli/index.js"
   },
   "scripts": {
     "build": "tsc",
