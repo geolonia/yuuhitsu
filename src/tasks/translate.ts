@@ -19,12 +19,11 @@ export function separateFrontmatter(content: string): FrontmatterSeparation {
   // Normalize CRLF to LF for regex matching
   const normalized = content.replace(/\r\n/g, "\n");
 
-  // Match frontmatter:
-  //   ^---\n             opening delimiter
-  //   ([\s\S]*?)         frontmatter content (including empty)
-  //   \n?---[ \t]*       closing delimiter (optional leading \n for empty frontmatter)
-  //   (\n|$)             followed by newline or end-of-string
-  const frontmatterRegex = /^---\n([\s\S]*?)\n?---[ \t]*(\n|$)/;
+  // Match frontmatter (two alternations to keep closing --- on its own line):
+  //   Case 1: non-empty body:  ^---\n ... \n---[ \t]*(\n|$)
+  //   Case 2: empty body:      ^---\n---[ \t]*(\n|$)
+  // Using alternation avoids the \n? ambiguity that allows --- to match mid-line.
+  const frontmatterRegex = /^---\n([\s\S]*?)\n---[ \t]*(\n|$)|^---\n---[ \t]*(\n|$)/;
   const match = normalized.match(frontmatterRegex);
 
   if (match) {
