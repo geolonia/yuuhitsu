@@ -140,7 +140,7 @@ describe("Translate Task", () => {
   });
 
   describe("Markdown Structure Preservation", () => {
-    it("should pass Markdown content to provider without alteration", async () => {
+    it("should pass Markdown content to provider with code blocks replaced by placeholders", async () => {
       const markdownContent = [
         "# Heading 1",
         "",
@@ -177,13 +177,15 @@ describe("Translate Task", () => {
         targetLang: "ja",
       });
 
-      // The full original content should be in the prompt sent to provider
+      // Headings, links, and tables should be sent to provider
       const callArgs = mockProvider.chat.mock.calls[0][0];
       const userMsg = callArgs.messages.find((m: any) => m.role === "user");
       expect(userMsg.content).toContain("# Heading 1");
-      expect(userMsg.content).toContain("```typescript");
       expect(userMsg.content).toContain("[Link](https://example.com)");
       expect(userMsg.content).toContain("| Col1 | Col2 |");
+      // Code block should be replaced with placeholder (not sent raw)
+      expect(userMsg.content).not.toContain("```typescript");
+      expect(userMsg.content).toContain("__CODE_BLOCK_0__");
     });
   });
 
