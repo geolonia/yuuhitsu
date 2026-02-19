@@ -11,21 +11,75 @@ interface FrontmatterSeparation {
 
 /**
  * Separate frontmatter from Markdown content
+ * Handles: LF, CRLF, no trailing newline after closing ---, trailing spaces, empty frontmatter
  * @param content - Full Markdown content
  * @returns Object with separated frontmatter and body
  */
 export function separateFrontmatter(content: string): FrontmatterSeparation {
-  // Match frontmatter pattern: ---\n...\n---\n
-  const frontmatterRegex = /^---\n([\s\S]*?)\n---\n/;
-  const match = content.match(frontmatterRegex);
+  // Normalize CRLF to LF for regex matching
+  const normalized = content.replace(/\r\n/g, "\n");
+
+  // Match frontmatter (two alternations to keep closing --- on its own line):
+  //   Case 1: non-empty body:  ^---\n ... \n---[ \t]*(\n|$)
+  //   Case 2: empty body:      ^---\n---[ \t]*(\n|$)
+  // Using alternation avoids the \n? ambiguity that allows --- to match mid-line.
+  const frontmatterRegex = /^---\n([\s\S]*?)\n---[ \t]*(\n|$)|^---\n---[ \t]*(\n|$)/;
+  const match = normalized.match(frontmatterRegex);
 
   if (match) {
-    const frontmatter = match[0]; // Including --- delimiters
-    const body = content.slice(match[0].length);
+    const matchedLength = match[0].length;
+    const frontmatter = normalized.slice(0, matchedLength);
+    const body = normalized.slice(matchedLength);
     return { frontmatter, body };
   }
 
-  return { frontmatter: null, body: content };
+  return { frontmatter: null, body: normalized };
+}
+
+interface CodeProtection {
+  text: string;
+  map: Map<string, string>;
+}
+
+/**
+ * Replace fenced code blocks and inline code with placeholders.
+ * Fenced blocks (``` or ````+) take priority over inline code.
+ */
+export function protectCodeBlocks(content: string): CodeProtection {
+  const map = new Map<string, string>();
+  let blockIndex = 0;
+  let inlineIndex = 0;
+
+  // Step 1: Replace fenced code blocks (4+ backticks before 3-backtick blocks)
+  // Matches ````+ ... ```` or ``` ... ``` (non-greedy, multiline)
+  let result = content.replace(/(`{3,})[^\n]*\n[\s\S]*?\1[ \t]*(\n|$)/g, (match) => {
+    const placeholder = `__CODE_BLOCK_${blockIndex++}__`;
+    map.set(placeholder, match);
+    return placeholder + "\n";
+  });
+
+  // Step 2: Replace inline code (single backtick, not within code blocks)
+  result = result.replace(/`([^`\n]+)`/g, (match) => {
+    const placeholder = `__INLINE_CODE_${inlineIndex++}__`;
+    map.set(placeholder, match);
+    return placeholder;
+  });
+
+  return { text: result, map };
+}
+
+/**
+ * Restore placeholders back to original code blocks/inline code.
+ */
+export function restoreCodeBlocks(content: string, map: Map<string, string>): string {
+  let result = content;
+  // Restore fenced code blocks (may have trailing newline added by protect)
+  for (const [placeholder, original] of map.entries()) {
+    // The placeholder may appear with or without trailing newline
+    result = result.split(placeholder + "\n").join(original);
+    result = result.split(placeholder).join(original);
+  }
+  return result;
 }
 
 export interface TranslateOptions {
@@ -72,12 +126,21 @@ Additional rules for Japanese translation:
 function buildPrompt(
   content: string,
   targetLang: string,
+  hasPlaceholders: boolean,
   templateContent?: string
 ): ChatMessage[] {
   const template = templateContent || DEFAULT_TEMPLATE;
-  const systemPrompt = template
+  let systemPrompt = template
     .replace(/\{\{targetLanguage\}\}/g, targetLang)
     .replace(/\{\{content\}\}/g, "");
+
+  if (hasPlaceholders) {
+    systemPrompt +=
+      "\n\nIMPORTANT - Placeholder preservation:\n" +
+      "- Tokens matching __CODE_BLOCK_N__ or __INLINE_CODE_N__ are placeholders for code blocks/inline code.\n" +
+      "- Output them VERBATIM and UNCHANGED. Do NOT translate, modify, or remove them.\n" +
+      "- Example: if input has __CODE_BLOCK_0__, output must contain __CODE_BLOCK_0__ exactly.";
+  }
 
   return [
     { role: "system", content: systemPrompt },
@@ -151,13 +214,17 @@ export async function translateFile(
   // Separate frontmatter from body
   const { frontmatter, body } = separateFrontmatter(content);
 
+  // Protect code blocks: replace with placeholders before sending to LLM
+  const { text: protectedBody, map: codeMap } = protectCodeBlocks(body);
+  const hasPlaceholders = codeMap.size > 0;
+
   // Split body into chunks if needed (frontmatter is never sent to LLM)
-  const chunks = splitIntoChunks(body);
+  const chunks = splitIntoChunks(protectedBody);
   const translatedParts: string[] = [];
   let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   for (const chunk of chunks) {
-    const messages = buildPrompt(chunk, targetLang, templateContent);
+    const messages = buildPrompt(chunk, targetLang, hasPlaceholders, templateContent);
     const response = await provider.chat({
       model: "",
       messages,
@@ -169,7 +236,9 @@ export async function translateFile(
     totalUsage.totalTokens += response.usage.totalTokens;
   }
 
-  const translatedBody = translatedParts.join("");
+  // Restore code blocks from placeholders
+  const translatedBodyWithPlaceholders = translatedParts.join("");
+  const translatedBody = restoreCodeBlocks(translatedBodyWithPlaceholders, codeMap);
 
   // Recombine frontmatter with translated body
   const translatedContent = frontmatter
