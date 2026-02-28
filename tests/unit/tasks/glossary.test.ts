@@ -317,6 +317,91 @@ terms:
       });
     });
 
+    describe("Markdown link URL path exclusion", () => {
+      let linkGlossaryPath: string;
+
+      beforeEach(() => {
+        linkGlossaryPath = join(tempDir, "glossary-link.yaml");
+        writeFileSync(
+          linkGlossaryPath,
+          `version: 1
+languages: [ja, en]
+terms:
+  - canonical: "GeonicDB"
+    type: noun
+    translations:
+      ja: "GeonicDB"
+      en: "GeonicDB"
+    do_not_use:
+      ja: ["geonicdb"]
+      en: ["geonicdb"]
+`
+        );
+      });
+
+      it("should not flag forbidden word inside relative URL path /path", () => {
+        const docPath = join(tempDir, "doc-link-abs.md");
+        writeFileSync(
+          docPath,
+          "[なぜ GeonicDB を選ぶのか？](/ja/introduction/why-geonicdb)\n"
+        );
+        const issues = checkGlossary(docPath, linkGlossaryPath, "ja");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag forbidden word inside relative URL path ./path", () => {
+        const docPath = join(tempDir, "doc-link-rel.md");
+        writeFileSync(
+          docPath,
+          "[Docs](./why-geonicdb/overview)\n"
+        );
+        const issues = checkGlossary(docPath, linkGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag forbidden word inside relative URL path ../path", () => {
+        const docPath = join(tempDir, "doc-link-parent.md");
+        writeFileSync(
+          docPath,
+          "[Back](../geonicdb-intro)\n"
+        );
+        const issues = checkGlossary(docPath, linkGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should still flag forbidden word in link text", () => {
+        const docPath = join(tempDir, "doc-link-text.md");
+        writeFileSync(
+          docPath,
+          "[geonicdb でできること](/docs/overview)\n"
+        );
+        const issues = checkGlossary(docPath, linkGlossaryPath, "en");
+        expect(issues).toHaveLength(1);
+        expect(issues[0].forbidden).toBe("geonicdb");
+      });
+
+      it("should still flag forbidden word in plain text (not in a link)", () => {
+        const docPath = join(tempDir, "doc-plain.md");
+        writeFileSync(
+          docPath,
+          "このドキュメントは geonicdb を説明します。\n"
+        );
+        const issues = checkGlossary(docPath, linkGlossaryPath, "en");
+        expect(issues).toHaveLength(1);
+        expect(issues[0].forbidden).toBe("geonicdb");
+      });
+
+      it("should not break existing absolute URL exclusion", () => {
+        const docPath = join(tempDir, "doc-abs-url.md");
+        writeFileSync(
+          docPath,
+          "See [docs](https://example.com/geonicdb/intro) for info.\n"
+        );
+        const issues = checkGlossary(docPath, linkGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+    });
+
     describe("substring match false positive suppression", () => {
       let substrGlossaryPath: string;
 
