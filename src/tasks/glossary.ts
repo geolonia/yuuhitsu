@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { parse, stringify } from "yaml";
+import { separateFrontmatter, protectCodeBlocks } from "./translate.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,18 +145,27 @@ export function checkGlossary(
     throw err;
   }
 
-  const lines = docContent.split("\n");
+  // Separate frontmatter (skip it) and get body
+  const { frontmatter, body } = separateFrontmatter(docContent);
+  const frontmatterLineCount = frontmatter ? frontmatter.split("\n").length - 1 : 0;
+
+  // Protect code blocks and inline code with placeholders to avoid false positives
+  const { text: protectedBody } = protectCodeBlocks(body);
+
+  const lines = protectedBody.split("\n");
   const issues: GlossaryIssue[] = [];
 
   for (const term of glossary.terms) {
     const forbidden = term.do_not_use?.[lang] ?? [];
     for (const forbiddenWord of forbidden) {
       for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes(forbiddenWord)) {
+        // Remove URL content before checking to avoid false positives inside URLs
+        const lineWithoutUrls = lines[i].replace(/https?:\/\/\S+/g, "");
+        if (lineWithoutUrls.includes(forbiddenWord)) {
           issues.push({
             forbidden: forbiddenWord,
             canonical: term.canonical,
-            line: i + 1,
+            line: i + 1 + frontmatterLineCount,
           });
         }
       }
