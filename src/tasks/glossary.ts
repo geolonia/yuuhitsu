@@ -157,11 +157,12 @@ export function checkGlossary(
 
   for (const term of glossary.terms) {
     const forbidden = term.do_not_use?.[lang] ?? [];
+    const canonicalTranslation = term.translations[lang];
     for (const forbiddenWord of forbidden) {
       for (let i = 0; i < lines.length; i++) {
         // Remove URL content before checking to avoid false positives inside URLs
         const lineWithoutUrls = lines[i].replace(/https?:\/\/\S+/g, "");
-        if (lineWithoutUrls.includes(forbiddenWord)) {
+        if (hasUncoveredOccurrence(lineWithoutUrls, forbiddenWord, canonicalTranslation)) {
           issues.push({
             forbidden: forbiddenWord,
             canonical: term.canonical,
@@ -173,6 +174,63 @@ export function checkGlossary(
   }
 
   return issues;
+}
+
+// ---------------------------------------------------------------------------
+// Substring-match helpers for checkGlossary
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if `canonicalTranslation` appears in `line` at a position
+ * that "covers" the occurrence of `forbiddenWord` starting at `forbiddenIdx`.
+ *
+ * Example: canonicalTranslation = "サブスクリプション", forbiddenWord = "サブスク"
+ * If "サブスクリプション" appears at position 0 in the line, the "サブスク" occurrence
+ * at position 0 is covered and should not be reported as a violation.
+ */
+function isOccurrenceCoveredByCanonical(
+  line: string,
+  forbiddenIdx: number,
+  forbiddenWord: string,
+  canonicalTranslation: string | undefined
+): boolean {
+  if (!canonicalTranslation) return false;
+
+  // For each position of forbiddenWord within canonicalTranslation, check
+  // whether canonicalTranslation appears at the corresponding position in line.
+  let posInCanonical = canonicalTranslation.indexOf(forbiddenWord);
+  while (posInCanonical !== -1) {
+    const canonicalStart = forbiddenIdx - posInCanonical;
+    if (
+      canonicalStart >= 0 &&
+      line.slice(canonicalStart, canonicalStart + canonicalTranslation.length) === canonicalTranslation
+    ) {
+      return true;
+    }
+    posInCanonical = canonicalTranslation.indexOf(forbiddenWord, posInCanonical + 1);
+  }
+  return false;
+}
+
+/**
+ * Returns true if `line` contains at least one occurrence of `forbiddenWord`
+ * that is NOT covered by `canonicalTranslation` appearing at the same position.
+ */
+function hasUncoveredOccurrence(
+  line: string,
+  forbiddenWord: string,
+  canonicalTranslation: string | undefined
+): boolean {
+  let searchPos = 0;
+  while (true) {
+    const idx = line.indexOf(forbiddenWord, searchPos);
+    if (idx === -1) break;
+    if (!isOccurrenceCoveredByCanonical(line, idx, forbiddenWord, canonicalTranslation)) {
+      return true;
+    }
+    searchPos = idx + 1;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

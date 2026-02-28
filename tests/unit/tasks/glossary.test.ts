@@ -316,6 +316,76 @@ terms:
         expect(issues[0].line).toBe(5);
       });
     });
+
+    describe("substring match false positive suppression", () => {
+      let substrGlossaryPath: string;
+
+      beforeEach(() => {
+        substrGlossaryPath = join(tempDir, "glossary-substr.yaml");
+        writeFileSync(
+          substrGlossaryPath,
+          `version: 1
+languages: [ja]
+terms:
+  - canonical: "Subscription"
+    type: noun
+    translations:
+      ja: "サブスクリプション"
+    do_not_use:
+      ja: ["サブスク"]
+  - canonical: "Context Broker"
+    type: noun
+    translations:
+      ja: "コンテキストブローカー"
+    do_not_use:
+      ja: ["ブローカー"]
+`
+        );
+      });
+
+      it("should not flag サブスク when it appears as part of canonical translation サブスクリプション", () => {
+        const docPath = join(tempDir, "doc-substr1.md");
+        writeFileSync(docPath, "サブスクリプションモデルを採用しています。\n");
+        const issues = checkGlossary(docPath, substrGlossaryPath, "ja");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag ブローカー when it appears as part of canonical translation コンテキストブローカー", () => {
+        const docPath = join(tempDir, "doc-substr2.md");
+        writeFileSync(docPath, "コンテキストブローカーを設定します。\n");
+        const issues = checkGlossary(docPath, substrGlossaryPath, "ja");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should flag サブスク when used standalone (not part of canonical translation)", () => {
+        const docPath = join(tempDir, "doc-substr3.md");
+        writeFileSync(docPath, "サブスク管理画面を開きます。\n");
+        const issues = checkGlossary(docPath, substrGlossaryPath, "ja");
+        expect(issues.length).toBeGreaterThan(0);
+        expect(issues[0].forbidden).toBe("サブスク");
+      });
+
+      it("should flag ブローカー when used standalone (not part of canonical translation)", () => {
+        const docPath = join(tempDir, "doc-substr4.md");
+        writeFileSync(docPath, "ブローカーに接続します。\n");
+        const issues = checkGlossary(docPath, substrGlossaryPath, "ja");
+        expect(issues.length).toBeGreaterThan(0);
+        expect(issues[0].forbidden).toBe("ブローカー");
+      });
+
+      it("should detect standalone do_not_use when both canonical and forbidden appear on same line", () => {
+        // "サブスクリプション"（canonical） と "サブスク"（standalone do_not_use）が同一行に存在する場合
+        // standalone の "サブスク" のみ違反として検出する
+        const docPath = join(tempDir, "doc-substr5.md");
+        writeFileSync(
+          docPath,
+          "サブスクリプションとサブスクの違いを説明します。\n"
+        );
+        const issues = checkGlossary(docPath, substrGlossaryPath, "ja");
+        expect(issues.length).toBeGreaterThan(0);
+        expect(issues[0].forbidden).toBe("サブスク");
+      });
+    });
   });
 
   // ---------------------------------------------------------------------------
