@@ -9,6 +9,7 @@ AI-powered document operations CLI
 ### Key Capabilities
 
 - **Markdown Translation**: Translate documents while preserving structure, code blocks, and formatting
+- **Glossary Management**: Maintain consistent terminology across all translations with a project-level glossary
 - **Multi-Provider Support**: Switch between Claude (Anthropic), Gemini (Google), and Ollama (local) with a single config line change
 - **Streaming Output**: See translation progress in real-time
 - **Dry-Run Mode**: Preview operations without making API calls
@@ -23,6 +24,18 @@ AI-powered document operations CLI
 - Support for large files with automatic chunking
 - Real-time streaming output
 - Retry logic with exponential backoff for API failures
+- Automatic glossary lookup during translation (when `glossary` is configured)
+
+### Glossary Management (Available Now)
+
+Maintain a project-level glossary to enforce consistent terminology across all translations.
+
+- **`glossary init`**: Generate a `glossary.yaml` skeleton with example terms
+- **`glossary check`**: Detect forbidden or inconsistent terms in a document
+- **`glossary sync`**: Report translation coverage across all configured languages and create stubs for missing entries
+- **`glossary review`**: Generate a Markdown report of all glossary terms and their translations
+
+When a `glossary` path is set in `yuuhitsu.config.yaml`, the `translate` command automatically injects the glossary into the AI prompt, ensuring canonical terms are used and forbidden variants are avoided.
 
 ### Coming Soon
 
@@ -68,6 +81,7 @@ model: claude-sonnet-4-5-20250929
 # Optional Settings
 outputDir: ./translated
 templates: ./templates
+glossary: ./glossary.yaml  # Path to glossary file (enables auto-injection during translation)
 log:
   enabled: true
   path: ./yuuhitsu.log
@@ -123,6 +137,106 @@ yuuhitsu translate \
   --provider claude \
   --model claude-sonnet-4-5-20250929
 ```
+
+### `glossary`
+
+Manage the project glossary for terminology consistency.
+
+#### `glossary init`
+
+Generate a `glossary.yaml` skeleton in the current directory.
+
+**Options:**
+
+- `--output <path>`: Output path for the glossary file (default: `glossary.yaml`)
+- `--force`: Overwrite an existing glossary file
+
+**Example:**
+
+```bash
+yuuhitsu glossary init
+yuuhitsu glossary init --output ./docs/glossary.yaml
+```
+
+#### `glossary check`
+
+Detect forbidden or inconsistent terminology in a document.
+
+**Options:**
+
+- `--input <file>` (required): Document file to check
+- `--glossary <path>` (required): Glossary file path
+- `--lang <code>` (required): Language code to check (e.g., `ja`, `en`)
+
+**Example:**
+
+```bash
+yuuhitsu glossary check --input README.md --glossary glossary.yaml --lang ja
+```
+
+#### `glossary sync`
+
+Report translation coverage and create stubs for missing entries.
+
+**Options:**
+
+- `--glossary <path>` (required): Glossary file path
+
+**Example:**
+
+```bash
+yuuhitsu glossary sync --glossary glossary.yaml
+```
+
+#### `glossary review`
+
+Generate a Markdown report of all glossary terms and their translations.
+
+**Options:**
+
+- `--glossary <path>` (required): Glossary file path
+- `--output <path>`: Save the report to a file (Markdown)
+
+**Example:**
+
+```bash
+yuuhitsu glossary review --glossary glossary.yaml
+yuuhitsu glossary review --glossary glossary.yaml --output glossary-report.md
+```
+
+### Glossary File Format
+
+The `glossary.yaml` file defines canonical terms, their translations, and forbidden variants:
+
+```yaml
+version: 1
+languages: [ja, en]
+terms:
+  - canonical: "API"
+    type: noun
+    translations:
+      ja: "API"
+      en: "API"
+    do_not_use:
+      ja: ["ＡＰＩ", "えーぴーあい"]
+  - canonical: "webhook"
+    type: noun
+    translations:
+      ja: "Webhook"
+      en: "webhook"
+    do_not_use:
+      ja: ["ウェブフック"]
+      en: ["web hook"]
+```
+
+| Field | Description |
+|-------|-------------|
+| `version` | Schema version (currently `1`) |
+| `languages` | List of language codes managed by this glossary |
+| `terms[].canonical` | The authoritative (source-language) term |
+| `terms[].type` | Term type (e.g., `noun`, `verb`) |
+| `terms[].translations` | Map of language code → translated term |
+| `terms[].do_not_use` | Map of language code → list of forbidden variants |
 
 ## Development
 
