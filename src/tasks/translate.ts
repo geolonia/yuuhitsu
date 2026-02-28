@@ -54,10 +54,12 @@ export function protectCodeBlocks(content: string): CodeProtection {
 
   // Step 1: Replace fenced code blocks (4+ backticks before 3-backtick blocks)
   // Matches ````+ ... ```` or ``` ... ``` (non-greedy, multiline)
+  // Preserve the original line count by repeating newlines so subsequent line numbers stay correct.
   let result = content.replace(/(`{3,})[^\n]*\n[\s\S]*?\1[ \t]*(\n|$)/g, (match) => {
     const placeholder = `__CODE_BLOCK_${blockIndex++}__`;
     map.set(placeholder, match);
-    return placeholder + "\n";
+    const newlineCount = (match.match(/\n/g) ?? []).length;
+    return placeholder + "\n".repeat(newlineCount);
   });
 
   // Step 2: Replace inline code (single backtick, not within code blocks)

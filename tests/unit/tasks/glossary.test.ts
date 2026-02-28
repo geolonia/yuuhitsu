@@ -245,6 +245,77 @@ terms:
         checkGlossary(docPath, glossaryPath, "zh")
       ).toThrow(/not defined in glossary/i);
     });
+
+    describe("false positive suppression", () => {
+      let fpGlossaryPath: string;
+
+      beforeEach(() => {
+        fpGlossaryPath = join(tempDir, "glossary-fp.yaml");
+        writeFileSync(
+          fpGlossaryPath,
+          `version: 1
+languages: [en]
+terms:
+  - canonical: "webhook"
+    type: noun
+    translations:
+      en: "webhook"
+    do_not_use:
+      en: ["web hook", "hook"]
+`
+        );
+      });
+
+      it("should not flag forbidden words inside fenced code blocks", () => {
+        const docPath = join(tempDir, "doc-fenced.md");
+        writeFileSync(
+          docPath,
+          "Text before.\n\n```\nweb hook example\n```\n\nText after.\n"
+        );
+        const issues = checkGlossary(docPath, fpGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag forbidden words inside inline code", () => {
+        const docPath = join(tempDir, "doc-inline.md");
+        writeFileSync(docPath, "Use `web hook` syntax here.\n");
+        const issues = checkGlossary(docPath, fpGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag forbidden words inside URLs", () => {
+        const docPath = join(tempDir, "doc-url.md");
+        writeFileSync(
+          docPath,
+          "See [docs](https://example.com/hook-events/list) for info.\n"
+        );
+        // "hook" appears inside URL https://example.com/hook-events/list but should not be flagged
+        const issues = checkGlossary(docPath, fpGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag forbidden words inside frontmatter", () => {
+        const docPath = join(tempDir, "doc-fm.md");
+        writeFileSync(
+          docPath,
+          "---\ntitle: web hook reference guide\n---\n\nBody is clean.\n"
+        );
+        const issues = checkGlossary(docPath, fpGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should preserve line numbers for violations after fenced code blocks", () => {
+        const docPath = join(tempDir, "doc-line-map.md");
+        writeFileSync(
+          docPath,
+          "```\nweb hook in code\n```\n\nThis hook should be flagged.\n"
+        );
+        const issues = checkGlossary(docPath, fpGlossaryPath, "en");
+        expect(issues).toHaveLength(1);
+        expect(issues[0].forbidden).toBe("hook");
+        expect(issues[0].line).toBe(5);
+      });
+    });
   });
 
   // ---------------------------------------------------------------------------
