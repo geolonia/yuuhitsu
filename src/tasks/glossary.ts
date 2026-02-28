@@ -162,7 +162,9 @@ export function checkGlossary(
       if (forbiddenWord.length === 0) continue;
       for (let i = 0; i < lines.length; i++) {
         // Remove URL content before checking to avoid false positives inside URLs
-        const lineWithoutUrls = lines[i].replace(/https?:\/\/\S+/g, "");
+        const lineWithoutUrls = lines[i]
+          .replace(/https?:\/\/\S+/g, "")
+          .replace(/\]\([^)]+\)/g, "");
         if (hasUncoveredOccurrence(lineWithoutUrls, forbiddenWord, canonicalTranslation)) {
           issues.push({
             forbidden: forbiddenWord,
