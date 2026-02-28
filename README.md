@@ -31,7 +31,7 @@ AI-powered document operations CLI
 Maintain a project-level glossary to enforce consistent terminology across all translations.
 
 - **`glossary init`**: Generate a `glossary.yaml` skeleton with example terms
-- **`glossary check`**: Detect forbidden or inconsistent terms in a document
+- **`glossary check`**: Detect forbidden or inconsistent terms in a document — supports both Markdown and JSON i18n files (e.g., `react-i18next` locale files); `.json` files are automatically detected and violations are reported as key paths (e.g., `dashboard.title`)
 - **`glossary sync`**: Report translation coverage across all configured languages and create stubs for missing entries
 - **`glossary review`**: Generate a Markdown report of all glossary terms and their translations
 
@@ -162,16 +162,29 @@ yuuhitsu glossary init --output ./docs/glossary.yaml
 
 Detect forbidden or inconsistent terminology in a document.
 
+Supports both Markdown (`.md`) and JSON i18n files (`.json`). When a `.json` file is provided, the command automatically applies JSON mode — scanning all string values in the file and reporting violations as key paths (e.g., `dashboard.title`, `navigation.menu.home`).
+
 **Options:**
 
-- `--input <file>` (required): Document file to check
+- `--input <file>` (required): Document file to check (Markdown or JSON i18n file)
 - `--glossary <path>` (required): Glossary file path
 - `--lang <code>` (required): Language code to check (e.g., `ja`, `en`)
 
-**Example:**
+**Examples:**
 
 ```bash
+# Check a Markdown document
 yuuhitsu glossary check --input README.md --glossary glossary.yaml --lang ja
+
+# Check a JSON i18n file (e.g., react-i18next locale)
+yuuhitsu glossary check --input locales/ja/common.json --glossary glossary.yaml --lang ja
+```
+
+When checking a JSON i18n file, violations are reported with their full key path:
+
+```
+✗ dashboard.title: found forbidden term "ウェブフック" (use "Webhook" instead)
+✗ navigation.menu.api: found forbidden term "ＡＰＩ" (use "API" instead)
 ```
 
 #### `glossary sync`
