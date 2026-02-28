@@ -340,7 +340,7 @@ terms:
       });
 
       it("should not flag forbidden word inside relative URL path /path", () => {
-        const docPath = join(tempDir, "doc-link-abs.md");
+        const docPath = join(tempDir, "doc-link-root.md");
         writeFileSync(
           docPath,
           "[なぜ GeonicDB を選ぶのか？](/ja/introduction/why-geonicdb)\n"
