@@ -26,6 +26,12 @@ AI-powered document operations CLI
 - Retry logic with exponential backoff for API failures
 - Automatic glossary lookup during translation (when `glossary` is configured)
 
+**What is skipped (not translated):**
+
+- Code blocks (` ``` `...` ``` `): preserved as-is
+- Inline code (`` `...` ``): preserved as-is
+- Table structure, headings, and links: structure is preserved; only the text content is translated
+
 ### Glossary Management (Available Now)
 
 Maintain a project-level glossary to enforce consistent terminology across all translations.
@@ -163,6 +169,14 @@ yuuhitsu glossary init --output ./docs/glossary.yaml
 Detect forbidden or inconsistent terminology in a document.
 
 Supports both Markdown (`.md`) and JSON i18n files (`.json`). When a `.json` file is provided, the command automatically applies JSON mode — scanning all string values in the file and reporting violations as key paths (e.g., `dashboard.title`, `navigation.menu.home`).
+
+**What is skipped (not checked):**
+
+- Code blocks (` ``` `...` ``` `)
+- Inline code (`` `...` ``)
+- URLs (`http://` / `https://`)
+- Frontmatter (`---`...`---`)
+- URL path portions of Markdown links (e.g., `/path` in `[text](/path)`)
 
 **Options:**
 
