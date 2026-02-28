@@ -303,6 +303,18 @@ terms:
         const issues = checkGlossary(docPath, fpGlossaryPath, "en");
         expect(issues).toHaveLength(0);
       });
+
+      it("should preserve line numbers for violations after fenced code blocks", () => {
+        const docPath = join(tempDir, "doc-line-map.md");
+        writeFileSync(
+          docPath,
+          "```\nweb hook in code\n```\n\nThis hook should be flagged.\n"
+        );
+        const issues = checkGlossary(docPath, fpGlossaryPath, "en");
+        expect(issues).toHaveLength(1);
+        expect(issues[0].forbidden).toBe("hook");
+        expect(issues[0].line).toBe(5);
+      });
     });
   });
 
