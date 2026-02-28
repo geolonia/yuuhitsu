@@ -375,7 +375,7 @@ terms:
           docPath,
           "[geonicdb でできること](/docs/overview)\n"
         );
-        const issues = checkGlossary(docPath, linkGlossaryPath, "en");
+        const issues = checkGlossary(docPath, linkGlossaryPath, "ja");
         expect(issues).toHaveLength(1);
         expect(issues[0].forbidden).toBe("geonicdb");
       });
@@ -386,7 +386,7 @@ terms:
           docPath,
           "このドキュメントは geonicdb を説明します。\n"
         );
-        const issues = checkGlossary(docPath, linkGlossaryPath, "en");
+        const issues = checkGlossary(docPath, linkGlossaryPath, "ja");
         expect(issues).toHaveLength(1);
         expect(issues[0].forbidden).toBe("geonicdb");
       });
