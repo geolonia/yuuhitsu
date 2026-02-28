@@ -1,6 +1,6 @@
 {
   "name": "@geolonia/yuuhitsu",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "右筆 (Yuuhitsu) - AI-powered document operations CLI. Translate, generate, and sync documents using Claude, Gemini, or Ollama.",
   "type": "module",
   "bin": {
