@@ -644,4 +644,151 @@ terms:
       expect(md).toContain("#");
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // checkGlossary — JSON i18n mode
+  // ---------------------------------------------------------------------------
+  describe("checkGlossary (JSON mode)", () => {
+    let glossaryPath: string;
+
+    beforeEach(() => {
+      glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(
+        glossaryPath,
+        `version: 1
+languages: [ja, en]
+terms:
+  - canonical: "API"
+    type: noun
+    translations:
+      ja: "API"
+      en: "API"
+    do_not_use:
+      ja: ["ＡＰＩ", "えーぴーあい"]
+  - canonical: "webhook"
+    type: noun
+    translations:
+      ja: "Webhook"
+      en: "webhook"
+    do_not_use:
+      ja: ["ウェブフック"]
+      en: ["web hook", "Web Hook"]
+`
+      );
+    });
+
+    it("should return no issues for a flat JSON with clean values", () => {
+      const docPath = join(tempDir, "clean.json");
+      writeFileSync(
+        docPath,
+        JSON.stringify({ title: "API ドキュメント", description: "Webhook の説明" })
+      );
+      const issues = checkGlossary(docPath, glossaryPath, "ja");
+      expect(issues).toHaveLength(0);
+    });
+
+    it("should detect do_not_use terms in flat JSON values", () => {
+      const docPath = join(tempDir, "flat.json");
+      writeFileSync(
+        docPath,
+        JSON.stringify({ title: "ＡＰＩ設定", description: "ウェブフックを登録する" })
+      );
+      const issues = checkGlossary(docPath, glossaryPath, "ja");
+      expect(issues.length).toBeGreaterThan(0);
+      const forbidden = issues.map((i) => i.forbidden);
+      expect(forbidden).toContain("ＡＰＩ");
+      expect(forbidden).toContain("ウェブフック");
+    });
+
+    it("should include keyPath (not line number) in JSON issues", () => {
+      const docPath = join(tempDir, "keypathtest.json");
+      writeFileSync(
+        docPath,
+        JSON.stringify({ title: "ＡＰＩ設定" })
+      );
+      const issues = checkGlossary(docPath, glossaryPath, "ja");
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues[0].keyPath).toBe("title");
+    });
+
+    it("should detect violations in nested object values", () => {
+      const docPath = join(tempDir, "nested.json");
+      writeFileSync(
+        docPath,
+        JSON.stringify({
+          dashboard: {
+            title: "ＡＰＩ管理",
+            subtitle: "概要",
+          },
+        })
+      );
+      const issues = checkGlossary(docPath, glossaryPath, "ja");
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues[0].keyPath).toBe("dashboard.title");
+    });
+
+    it("should detect violations in array string values", () => {
+      const docPath = join(tempDir, "array.json");
+      writeFileSync(
+        docPath,
+        JSON.stringify({ items: ["API の説明", "ＡＰＩは使わない"] })
+      );
+      const issues = checkGlossary(docPath, glossaryPath, "ja");
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues[0].keyPath).toBe("items[1]");
+    });
+
+    it("should skip non-string values (null, number, boolean)", () => {
+      const docPath = join(tempDir, "nonstringvals.json");
+      writeFileSync(
+        docPath,
+        JSON.stringify({
+          count: 42,
+          enabled: true,
+          nothing: null,
+          label: "正常な値",
+        })
+      );
+      const issues = checkGlossary(docPath, glossaryPath, "ja");
+      expect(issues).toHaveLength(0);
+    });
+
+    it("should skip URL content inside JSON string values", () => {
+      const docPath = join(tempDir, "json-url.json");
+      writeFileSync(
+        docPath,
+        JSON.stringify({ link: "See https://example.com/web%20hook/setup for details" })
+      );
+      const issues = checkGlossary(docPath, glossaryPath, "en");
+      expect(issues).toHaveLength(0);
+    });
+
+    it("should not affect existing Markdown check (no regression)", () => {
+      const mdPath = join(tempDir, "doc.md");
+      writeFileSync(mdPath, "# API ドキュメント\n\nＡＰＩを使ってください。\n");
+      const issues = checkGlossary(mdPath, glossaryPath, "ja");
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues[0].line).toBeGreaterThan(0);
+      expect(issues[0].keyPath).toBeUndefined();
+    });
+
+    it("should throw on invalid JSON file", () => {
+      const docPath = join(tempDir, "invalid.json");
+      writeFileSync(docPath, "{ not valid json }");
+      expect(() => checkGlossary(docPath, glossaryPath, "ja")).toThrow();
+    });
+
+    it("should handle deeply nested key paths correctly", () => {
+      const docPath = join(tempDir, "deep.json");
+      writeFileSync(
+        docPath,
+        JSON.stringify({
+          a: { b: { c: "ＡＰＩの設定" } },
+        })
+      );
+      const issues = checkGlossary(docPath, glossaryPath, "ja");
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues[0].keyPath).toBe("a.b.c");
+    });
+  });
 });
