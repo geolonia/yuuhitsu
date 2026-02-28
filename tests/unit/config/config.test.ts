@@ -66,6 +66,15 @@ describe("Config Loader", () => {
     await expect(loadConfig(configPath)).rejects.toThrow(/model/i);
   });
 
+  it("should throw when glossary field is not a string", async () => {
+    const configPath = join(tempDir, "yuuhitsu.config.yaml");
+    writeFileSync(
+      configPath,
+      `provider: claude\nmodel: claude-sonnet-4-5-20250929\nglossary:\n  path: glossary.yaml\n`
+    );
+    await expect(loadConfig(configPath)).rejects.toThrow(/glossary.*string/i);
+  });
+
   it("should load optional log configuration", async () => {
     const configPath = join(tempDir, "yuuhitsu.config.yaml");
     writeFileSync(

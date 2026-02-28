@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { dirname, basename, extname, join } from "path";
 import type { AIProvider, ChatMessage } from "../provider/interface.js";
+import type { GlossaryConfig } from "./glossary.js";
+import { buildGlossaryPrompt } from "./glossary.js";
 
 const CHUNK_SIZE = 50 * 1024; // 50KB
 
@@ -88,6 +90,7 @@ export interface TranslateOptions {
   outputPath?: string;
   targetLang: string;
   templateContent?: string;
+  glossaryConfig?: GlossaryConfig;
 }
 
 export interface TranslateResult {
@@ -127,12 +130,20 @@ function buildPrompt(
   content: string,
   targetLang: string,
   hasPlaceholders: boolean,
-  templateContent?: string
+  templateContent?: string,
+  glossaryConfig?: GlossaryConfig
 ): ChatMessage[] {
   const template = templateContent || DEFAULT_TEMPLATE;
   let systemPrompt = template
     .replace(/\{\{targetLanguage\}\}/g, targetLang)
     .replace(/\{\{content\}\}/g, "");
+
+  if (glossaryConfig) {
+    const glossarySection = buildGlossaryPrompt(glossaryConfig, targetLang);
+    if (glossarySection) {
+      systemPrompt += glossarySection;
+    }
+  }
 
   if (hasPlaceholders) {
     systemPrompt +=
@@ -188,7 +199,7 @@ function splitIntoChunks(content: string): string[] {
 export async function translateFile(
   options: TranslateOptions
 ): Promise<TranslateResult> {
-  const { provider, inputPath, targetLang, templateContent } = options;
+  const { provider, inputPath, targetLang, templateContent, glossaryConfig } = options;
 
   // Read input file
   let content: string;
@@ -224,7 +235,7 @@ export async function translateFile(
   let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   for (const chunk of chunks) {
-    const messages = buildPrompt(chunk, targetLang, hasPlaceholders, templateContent);
+    const messages = buildPrompt(chunk, targetLang, hasPlaceholders, templateContent, glossaryConfig);
     const response = await provider.chat({
       model: "",
       messages,
