@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
-import { parse } from "yaml";
+import { parse, stringify } from "yaml";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +33,7 @@ export interface SyncResult {
   totalTerms: number;
   termsByLanguage: Record<string, GlossaryTerm[]>;
   missingTranslations: MissingTranslation[];
+  stubsCreated: number;
 }
 
 export interface ReviewReport {
@@ -85,6 +86,14 @@ export function loadGlossary(glossaryPath: string): GlossaryConfig | null {
     throw new Error(`Invalid glossary file: ${glossaryPath}`);
   }
 
+  const schema = raw as Record<string, unknown>;
+  if (!Array.isArray(schema.terms)) {
+    throw new Error(`Glossary file must have a "terms" array: ${glossaryPath}`);
+  }
+  if (!Array.isArray(schema.languages)) {
+    throw new Error(`Glossary file must have a "languages" array: ${glossaryPath}`);
+  }
+
   return raw as GlossaryConfig;
 }
 
@@ -115,6 +124,13 @@ export function checkGlossary(
   const glossary = loadGlossary(glossaryPath);
   if (!glossary) {
     throw new Error(`Glossary file not found: ${glossaryPath}`);
+  }
+
+  // Validate lang parameter
+  if (!glossary.languages.includes(lang)) {
+    throw new Error(
+      `Language "${lang}" is not defined in glossary. Available: ${glossary.languages.join(", ")}`
+    );
   }
 
   // Read document (throws if not found)
@@ -185,10 +201,25 @@ export function syncGlossary(glossaryPath: string): SyncResult {
     }
   }
 
+  // Write stub placeholders for missing translations
+  let stubsCreated = 0;
+  if (missingTranslations.length > 0) {
+    for (const term of glossary.terms) {
+      for (const lang of glossary.languages) {
+        if (!term.translations[lang]) {
+          term.translations[lang] = "";
+          stubsCreated++;
+        }
+      }
+    }
+    writeFileSync(glossaryPath, stringify(glossary), "utf-8");
+  }
+
   return {
     totalTerms: glossary.terms.length,
     termsByLanguage,
     missingTranslations,
+    stubsCreated,
   };
 }
 

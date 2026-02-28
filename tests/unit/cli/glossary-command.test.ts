@@ -151,18 +151,25 @@ describe("Glossary CLI Command", () => {
       vi.mocked(checkGlossary).mockReturnValue([
         { forbidden: "ＡＰＩ", canonical: "API", line: 3 },
       ]);
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit(1)");
+      });
       const docPath = join(tempDir, "doc.md");
       writeFileSync(docPath, "# Test\n");
       const glossaryPath = join(tempDir, "glossary.yaml");
       writeFileSync(glossaryPath, "version: 1\nlanguages: [ja]\nterms: []\n");
 
       const checkCmd = glossaryCommand.commands.find((c) => c.name() === "check")!;
-      await checkCmd.parseAsync(
-        ["--input", docPath, "--glossary", glossaryPath, "--lang", "ja"],
-        { from: "user" }
-      );
+      await expect(
+        checkCmd.parseAsync(
+          ["--input", docPath, "--glossary", glossaryPath, "--lang", "ja"],
+          { from: "user" }
+        )
+      ).rejects.toThrow("process.exit(1)");
       const output = stdoutSpy.mock.calls.map((c) => c[0]).join("");
       expect(output).toContain("ＡＰＩ");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      exitSpy.mockRestore();
     });
   });
 

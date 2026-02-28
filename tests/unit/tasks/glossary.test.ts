@@ -72,6 +72,18 @@ terms:
       writeFileSync(glossaryPath, "{ invalid: yaml: content:");
       expect(() => loadGlossary(glossaryPath)).toThrow();
     });
+
+    it("should throw when terms field is missing", () => {
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(glossaryPath, "version: 1\nlanguages: [ja, en]\n");
+      expect(() => loadGlossary(glossaryPath)).toThrow(/terms/i);
+    });
+
+    it("should throw when languages field is missing", () => {
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(glossaryPath, "version: 1\nterms: []\n");
+      expect(() => loadGlossary(glossaryPath)).toThrow(/languages/i);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -225,6 +237,14 @@ terms:
         checkGlossary(join(tempDir, "nonexistent.md"), glossaryPath, "en")
       ).toThrow(/not found|ENOENT/i);
     });
+
+    it("should throw when lang is not defined in glossary", () => {
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "some content\n");
+      expect(() =>
+        checkGlossary(docPath, glossaryPath, "zh")
+      ).toThrow(/not defined in glossary/i);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -298,6 +318,32 @@ terms:
       expect(() =>
         syncGlossary(join(tempDir, "nonexistent.yaml"))
       ).toThrow();
+    });
+
+    it("should write stub placeholders for missing translations", () => {
+      const partialPath = join(tempDir, "glossary-partial.yaml");
+      writeFileSync(
+        partialPath,
+        `version: 1
+languages: [ja, en, zh]
+terms:
+  - canonical: "API"
+    type: noun
+    translations:
+      ja: "API"
+      en: "API"
+`
+      );
+
+      const result = syncGlossary(partialPath);
+      expect(result.stubsCreated).toBeGreaterThan(0);
+
+      // Reload to verify stubs were written
+      const updated = loadGlossary(partialPath);
+      expect(updated).not.toBeNull();
+      const apiTerm = updated!.terms.find((t) => t.canonical === "API");
+      expect(apiTerm).toBeDefined();
+      expect("zh" in apiTerm!.translations).toBe(true);
     });
   });
 

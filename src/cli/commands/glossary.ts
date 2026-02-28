@@ -60,6 +60,7 @@ const checkCmd = new Command("check")
           `  Line ${issue.line}: "${chalk.red(issue.forbidden)}" → use "${chalk.green(issue.canonical)}"\n`
         );
       }
+      process.exit(1);
     } catch (err: unknown) {
       process.stderr.write(formatError(err) + "\n");
       process.exit(1);
