@@ -361,7 +361,7 @@ terms:
         const docPath = join(tempDir, "doc-substr3.md");
         writeFileSync(docPath, "サブスク管理画面を開きます。\n");
         const issues = checkGlossary(docPath, substrGlossaryPath, "ja");
-        expect(issues.length).toBeGreaterThan(0);
+        expect(issues).toHaveLength(1);
         expect(issues[0].forbidden).toBe("サブスク");
       });
 
@@ -369,7 +369,7 @@ terms:
         const docPath = join(tempDir, "doc-substr4.md");
         writeFileSync(docPath, "ブローカーに接続します。\n");
         const issues = checkGlossary(docPath, substrGlossaryPath, "ja");
-        expect(issues.length).toBeGreaterThan(0);
+        expect(issues).toHaveLength(1);
         expect(issues[0].forbidden).toBe("ブローカー");
       });
 
@@ -382,7 +382,7 @@ terms:
           "サブスクリプションとサブスクの違いを説明します。\n"
         );
         const issues = checkGlossary(docPath, substrGlossaryPath, "ja");
-        expect(issues.length).toBeGreaterThan(0);
+        expect(issues).toHaveLength(1);
         expect(issues[0].forbidden).toBe("サブスク");
       });
     });
