@@ -23,6 +23,8 @@ export interface GlossaryIssue {
   forbidden: string;
   canonical: string;
   line: number;
+  /** JSON mode only: dot-notation key path (e.g. "dashboard.title", "items[0]") */
+  keyPath?: string;
 }
 
 export interface MissingTranslation {
@@ -145,7 +147,46 @@ export function checkGlossary(
     throw err;
   }
 
-  // Separate frontmatter (skip it) and get body
+  // JSON mode: parse and check all string values
+  if (docPath.endsWith(".json")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(docContent);
+    } catch (err: unknown) {
+      throw new Error(
+        `Failed to parse JSON file: ${docPath}${err instanceof Error ? ` — ${err.message}` : ""}`
+      );
+    }
+
+    const stringValues = extractJsonStringValues(parsed);
+    const issues: GlossaryIssue[] = [];
+
+    for (const term of glossary.terms) {
+      const forbidden = term.do_not_use?.[lang] ?? [];
+      const canonicalTranslation = term.translations[lang];
+      for (const forbiddenWord of forbidden) {
+        if (forbiddenWord.length === 0) continue;
+        for (const { keyPath, value } of stringValues) {
+          // Remove URL content before checking to avoid false positives inside URLs
+          const valueWithoutUrls = value
+            .replace(/https?:\/\/\S+/g, "")
+            .replace(/\]\([^)]+\)/g, "");
+          if (hasUncoveredOccurrence(valueWithoutUrls, forbiddenWord, canonicalTranslation)) {
+            issues.push({
+              forbidden: forbiddenWord,
+              canonical: term.canonical,
+              line: 0,
+              keyPath,
+            });
+          }
+        }
+      }
+    }
+
+    return issues;
+  }
+
+  // Markdown mode: separate frontmatter, protect code blocks, check line by line
   const { frontmatter, body } = separateFrontmatter(docContent);
   const frontmatterLineCount = frontmatter ? frontmatter.split("\n").length - 1 : 0;
 
@@ -177,6 +218,44 @@ export function checkGlossary(
   }
 
   return issues;
+}
+
+// ---------------------------------------------------------------------------
+// JSON i18n helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursively extracts all string values from a JSON object.
+ * Returns an array of { keyPath, value } pairs.
+ * Arrays use bracket notation: "items[0]".
+ */
+export function extractJsonStringValues(
+  obj: unknown,
+  prefix: string = ""
+): Array<{ keyPath: string; value: string }> {
+  if (typeof obj === "string") {
+    return prefix ? [{ keyPath: prefix, value: obj }] : [];
+  }
+
+  if (Array.isArray(obj)) {
+    const results: Array<{ keyPath: string; value: string }> = [];
+    for (let i = 0; i < obj.length; i++) {
+      const childPath = prefix ? `${prefix}[${i}]` : `[${i}]`;
+      results.push(...extractJsonStringValues(obj[i], childPath));
+    }
+    return results;
+  }
+
+  if (obj !== null && typeof obj === "object") {
+    const results: Array<{ keyPath: string; value: string }> = [];
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      const childPath = prefix ? `${prefix}.${key}` : key;
+      results.push(...extractJsonStringValues(value, childPath));
+    }
+    return results;
+  }
+
+  return [];
 }
 
 // ---------------------------------------------------------------------------

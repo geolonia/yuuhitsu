@@ -56,8 +56,9 @@ const checkCmd = new Command("check")
       );
 
       for (const issue of issues) {
+        const location = issue.keyPath ? issue.keyPath : `Line ${issue.line}`;
         process.stdout.write(
-          `  Line ${issue.line}: "${chalk.red(issue.forbidden)}" → use "${chalk.green(issue.canonical)}"\n`
+          `  ${location}: "${chalk.red(issue.forbidden)}" → use "${chalk.green(issue.canonical)}"\n`
         );
       }
       process.exit(1);
