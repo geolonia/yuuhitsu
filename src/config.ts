@@ -11,6 +11,7 @@ export interface AppConfig {
   model: string;
   templates?: string;
   outputDir?: string;
+  glossary?: string;
   log?: {
     enabled?: boolean;
     path?: string;
@@ -63,6 +64,7 @@ export async function loadConfig(
 
   if (raw.templates) config.templates = raw.templates;
   if (raw.outputDir) config.outputDir = raw.outputDir;
+  if (raw.glossary) config.glossary = raw.glossary;
   if (raw.log) {
     config.log = {
       enabled: raw.log.enabled ?? false,

@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { formatError } from "../errors.js";
 import { translateCommand } from "./commands/translate.js";
 import { initCommand } from "./commands/init.js";
+import { glossaryCommand } from "./commands/glossary.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -35,6 +36,7 @@ program
 // Register commands
 program.addCommand(initCommand);
 program.addCommand(translateCommand);
+program.addCommand(glossaryCommand);
 
 program.parseAsync(process.argv).catch((err) => {
   process.stderr.write(formatError(err) + "\n");
