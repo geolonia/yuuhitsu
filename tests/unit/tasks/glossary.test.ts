@@ -402,6 +402,120 @@ terms:
       });
     });
 
+    describe("technical identifier boundary detection", () => {
+      let techGlossaryPath: string;
+
+      beforeEach(() => {
+        techGlossaryPath = join(tempDir, "glossary-tech.yaml");
+        writeFileSync(
+          techGlossaryPath,
+          `version: 1
+languages: [ja, en]
+terms:
+  - canonical: "NGSI-LD"
+    type: brand
+    translations:
+      ja: "NGSI-LD"
+      en: "NGSI-LD"
+    do_not_use:
+      ja: ["NGSILD", "ngsi-ld"]
+      en: ["NGSILD", "ngsi-ld"]
+  - canonical: "GeonicDB"
+    type: brand
+    translations:
+      ja: "GeonicDB"
+      en: "GeonicDB"
+    do_not_use:
+      ja: ["geonicdb"]
+      en: ["geonicdb"]
+`
+        );
+      });
+
+      it("should not flag forbidden word inside hyphenated compound (NGSILD-Warning)", () => {
+        const docPath = join(tempDir, "doc-compound.md");
+        writeFileSync(
+          docPath,
+          "| Warning header (NGSILD-Warning) | description |\n"
+        );
+        const issues = checkGlossary(docPath, techGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag forbidden word inside underscore identifier (API_NGSILD.md)", () => {
+        const docPath = join(tempDir, "doc-ident.md");
+        writeFileSync(
+          docPath,
+          "See API_NGSILD.md for NGSI-LD API details.\n"
+        );
+        const issues = checkGlossary(docPath, techGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag forbidden word in markdown link text that is a filename", () => {
+        const docPath = join(tempDir, "doc-linktext.md");
+        writeFileSync(
+          docPath,
+          "[API_NGSILD.md](./ngsild.md) - NGSI-LD API reference\n"
+        );
+        const issues = checkGlossary(docPath, techGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag forbidden word inside URN pattern (urn:ngsi-ld:null)", () => {
+        const docPath = join(tempDir, "doc-urn.md");
+        writeFileSync(
+          docPath,
+          "| supports merge-patch+json, urn:ngsi-ld:null, keyValues |\n"
+        );
+        const issues = checkGlossary(docPath, techGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag forbidden word in compound package name (geonicdb-cli)", () => {
+        const docPath = join(tempDir, "doc-package.md");
+        writeFileSync(
+          docPath,
+          "Source: [geolonia/geonicdb-cli](https://github.com/geolonia/geonicdb-cli)\n"
+        );
+        const issues = checkGlossary(docPath, techGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should still flag standalone forbidden word", () => {
+        const docPath = join(tempDir, "doc-standalone.md");
+        writeFileSync(
+          docPath,
+          "Use NGSILD for testing.\n"
+        );
+        const issues = checkGlossary(docPath, techGlossaryPath, "en");
+        expect(issues).toHaveLength(1);
+        expect(issues[0].forbidden).toBe("NGSILD");
+      });
+
+      it("should still flag forbidden word at end of sentence", () => {
+        const docPath = join(tempDir, "doc-endsentence.md");
+        writeFileSync(
+          docPath,
+          "This uses NGSILD.\n"
+        );
+        const issues = checkGlossary(docPath, techGlossaryPath, "en");
+        expect(issues).toHaveLength(1);
+        expect(issues[0].forbidden).toBe("NGSILD");
+      });
+
+      it("should still flag standalone lowercase forbidden word", () => {
+        const docPath = join(tempDir, "doc-lower.md");
+        writeFileSync(
+          docPath,
+          "Use geonicdb for this project.\n"
+        );
+        const issues = checkGlossary(docPath, techGlossaryPath, "en");
+        expect(issues).toHaveLength(1);
+        expect(issues[0].forbidden).toBe("geonicdb");
+      });
+    });
+
     describe("substring match false positive suppression", () => {
       let substrGlossaryPath: string;
 

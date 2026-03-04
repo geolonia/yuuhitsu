@@ -167,10 +167,11 @@ export function checkGlossary(
       for (const forbiddenWord of forbidden) {
         if (forbiddenWord.length === 0) continue;
         for (const { keyPath, value } of stringValues) {
-          // Remove URL content before checking to avoid false positives inside URLs
+          // Remove URL/URN content before checking to avoid false positives
           const valueWithoutUrls = value
             .replace(/https?:\/\/\S+/g, "")
-            .replace(/\]\([^)]+\)/g, "");
+            .replace(/\]\([^)]+\)/g, "")
+            .replace(/urn:\S+/g, "");
           if (hasUncoveredOccurrence(valueWithoutUrls, forbiddenWord, canonicalTranslation)) {
             issues.push({
               forbidden: forbiddenWord,
@@ -202,10 +203,11 @@ export function checkGlossary(
     for (const forbiddenWord of forbidden) {
       if (forbiddenWord.length === 0) continue;
       for (let i = 0; i < lines.length; i++) {
-        // Remove URL content before checking to avoid false positives inside URLs
+        // Remove URL/URN content before checking to avoid false positives
         const lineWithoutUrls = lines[i]
           .replace(/https?:\/\/\S+/g, "")
-          .replace(/\]\([^)]+\)/g, "");
+          .replace(/\]\([^)]+\)/g, "")
+          .replace(/urn:\S+/g, "");
         if (hasUncoveredOccurrence(lineWithoutUrls, forbiddenWord, canonicalTranslation)) {
           issues.push({
             forbidden: forbiddenWord,
@@ -295,8 +297,34 @@ function isOccurrenceCoveredByCanonical(
 }
 
 /**
+ * Returns true if the match at `matchIdx` is part of a larger technical
+ * identifier (e.g., "NGSILD" in "NGSILD-Warning" or "API_NGSILD.md").
+ *
+ * Uses ASCII identifier characters to detect compound words:
+ * - Before: [a-zA-Z0-9_] (alphanumeric + underscore)
+ * - After:  [a-zA-Z0-9_\-] (alphanumeric + underscore + hyphen for compound words)
+ */
+function isPartOfLargerIdentifier(
+  line: string,
+  matchIdx: number,
+  matchLen: number
+): boolean {
+  if (matchIdx > 0) {
+    const charBefore = line[matchIdx - 1];
+    if (/[a-zA-Z0-9_]/.test(charBefore)) return true;
+  }
+  const afterIdx = matchIdx + matchLen;
+  if (afterIdx < line.length) {
+    const charAfter = line[afterIdx];
+    if (/[a-zA-Z0-9_\-]/.test(charAfter)) return true;
+  }
+  return false;
+}
+
+/**
  * Returns true if `line` contains at least one occurrence of `forbiddenWord`
- * that is NOT covered by `canonicalTranslation` appearing at the same position.
+ * that is NOT covered by `canonicalTranslation` appearing at the same position
+ * and is NOT part of a larger technical identifier.
  */
 function hasUncoveredOccurrence(
   line: string,
@@ -308,7 +336,10 @@ function hasUncoveredOccurrence(
   while (true) {
     const idx = line.indexOf(forbiddenWord, searchPos);
     if (idx === -1) break;
-    if (!isOccurrenceCoveredByCanonical(line, idx, forbiddenWord, canonicalTranslation)) {
+    if (
+      !isOccurrenceCoveredByCanonical(line, idx, forbiddenWord, canonicalTranslation) &&
+      !isPartOfLargerIdentifier(line, idx, forbiddenWord.length)
+    ) {
       return true;
     }
     searchPos = idx + 1;
