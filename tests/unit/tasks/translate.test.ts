@@ -17,7 +17,7 @@ function createMockProvider(responseContent: string) {
 }
 
 // Import translate task — will fail until implementation exists
-import { translateFile } from "../../../src/tasks/translate.js";
+import { translateFile, splitIntoChunks } from "../../../src/tasks/translate.js";
 
 describe("Translate Task", () => {
   let tempDir: string;
@@ -268,6 +268,92 @@ describe("Translate Task", () => {
       expect(result).toHaveProperty("outputPath", outputPath);
       expect(result).toHaveProperty("usage");
       expect(result.usage.totalTokens).toBe(300);
+    });
+  });
+
+  describe("splitIntoChunks (heading-based chunking)", () => {
+    it("should return a single chunk for content under maxChunkLines", () => {
+      const lines = Array.from({ length: 50 }, (_, i) => `Line ${i}`);
+      const content = lines.join("\n");
+      const chunks = splitIntoChunks(content, 300);
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toBe(content);
+    });
+
+    it("should split long content at ## heading boundaries", () => {
+      // 3 sections of 210 lines each = 630 lines total, each starts with ##
+      const makeSection = (n: number) =>
+        [`## Section ${n}`, ...Array.from({ length: 209 }, (_, i) => `Line ${i}`)].join("\n");
+      const content = [makeSection(1), makeSection(2), makeSection(3)].join("\n");
+
+      const chunks = splitIntoChunks(content, 300);
+      // 630 total lines → must be split into multiple chunks
+      expect(chunks.length).toBeGreaterThan(1);
+      // Every chunk except possibly the first should start with ##
+      const nonFirstChunks = chunks.slice(1);
+      for (const chunk of nonFirstChunks) {
+        expect(chunk.trimStart()).toMatch(/^## Section/);
+      }
+    });
+
+    it("should not split in the middle of a table", () => {
+      // 295 regular lines, then a 20-row table, then 30 after-table lines = 345 total
+      const regularLines = Array.from({ length: 295 }, (_, i) => `Line ${i}`);
+      const tableLines = [
+        "| Header1 | Header2 |",
+        "|---------|---------|",
+        ...Array.from({ length: 18 }, (_, i) => `| Row ${i} | Data ${i} |`),
+      ];
+      const afterTableLines = Array.from({ length: 30 }, (_, i) => `After table line ${i}`);
+      const content = [...regularLines, ...tableLines, ...afterTableLines].join("\n");
+
+      const chunks = splitIntoChunks(content, 300);
+
+      // Content must be split (total 345 lines > 300)
+      expect(chunks.length).toBeGreaterThan(1);
+
+      // All table rows must appear in the same chunk (not split mid-table)
+      const chunkWithTableStart = chunks.find((c) => c.includes("| Header1 | Header2 |"));
+      const chunkWithTableEnd = chunks.find((c) => c.includes("| Row 17 | Data 17 |"));
+      expect(chunkWithTableStart).toBeDefined();
+      expect(chunkWithTableEnd).toBeDefined();
+      expect(chunkWithTableStart).toBe(chunkWithTableEnd);
+    });
+
+    it("should not split inside a fenced code block", () => {
+      // 290 regular lines, then a code block of 32 lines, then 30 after-code lines = 352 total
+      const regularLines = Array.from({ length: 290 }, (_, i) => `Line ${i}`);
+      const codeBlock = [
+        "```typescript",
+        ...Array.from({ length: 30 }, (_, i) => `const x${i} = ${i};`),
+        "```",
+      ];
+      const afterCode = Array.from({ length: 30 }, (_, i) => `After code ${i}`);
+      const content = [...regularLines, ...codeBlock, ...afterCode].join("\n");
+
+      const chunks = splitIntoChunks(content, 300);
+
+      // Each chunk must have balanced code fences
+      for (const chunk of chunks) {
+        const chunkLines = chunk.split("\n");
+        let depth = 0;
+        for (const line of chunkLines) {
+          if (/^`{3,}/.test(line)) depth = depth === 0 ? 1 : 0;
+        }
+        expect(depth).toBe(0);
+      }
+    });
+
+    it("should respect the maxChunkLines parameter", () => {
+      const lines = Array.from({ length: 250 }, (_, i) => `Line ${i}`);
+      const content = lines.join("\n");
+
+      // Default (300 lines): 250 lines fits in one chunk
+      expect(splitIntoChunks(content)).toHaveLength(1);
+
+      // maxChunkLines=100: 250 lines must produce multiple chunks
+      const chunks = splitIntoChunks(content, 100);
+      expect(chunks.length).toBeGreaterThan(1);
     });
   });
 });
