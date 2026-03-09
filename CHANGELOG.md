@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.8] - 2026-03-09
+
+### Fixed
+- Fix infinite recursion in `splitAtPositions` when `###` heading is at segment position 0: filtered out position-0 headings that cannot reduce segment size
+- This occurred on large files (e.g., ngsild.md with 1597 lines) when `protectBullets` sentinels pushed segment line count above `maxChunkLines`, triggering recursive `###` splitting where the sole heading was at the segment start
+
+### Added
+- Regression test using real ngsild.md fixture (1597 lines, 93 code blocks)
+- Test for full `translateFile` pipeline with bullet sentinels (translate-protected.ts simulation)
+- Test for `splitIntoChunks` with `###` heading at segment position 0
+- Test for large files with many headings and bullet sentinels
+
 ## [0.1.7] - 2026-03-10
 
 ### Fixed
