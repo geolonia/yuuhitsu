@@ -46,22 +46,54 @@ interface CodeProtection {
 
 /**
  * Replace fenced code blocks and inline code with placeholders.
- * Fenced blocks (``` or ````+) take priority over inline code.
+ * Uses a line-by-line parser instead of regex to avoid V8 stack overflow
+ * on files with many code blocks (backreference + [\s\S]*? causes recursive backtracking).
  */
 export function protectCodeBlocks(content: string): CodeProtection {
   const map = new Map<string, string>();
   let blockIndex = 0;
   let inlineIndex = 0;
 
-  // Step 1: Replace fenced code blocks (4+ backticks before 3-backtick blocks)
-  // Matches ````+ ... ```` or ``` ... ``` (non-greedy, multiline)
-  // Preserve the original line count by repeating newlines so subsequent line numbers stay correct.
-  let result = content.replace(/(`{3,})[^\n]*\n[\s\S]*?\1[ \t]*(\n|$)/g, (match) => {
-    const placeholder = `__CODE_BLOCK_${blockIndex++}__`;
-    map.set(placeholder, match);
-    const newlineCount = (match.match(/\n/g) ?? []).length;
-    return placeholder + "\n".repeat(newlineCount);
-  });
+  // Step 1: Replace fenced code blocks using line-by-line parsing
+  const lines = content.split("\n");
+  const resultLines: string[] = [];
+  let fenceOpen: string | null = null; // the backtick sequence that opened the current block
+  let blockLines: string[] = [];
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(`{3,})/);
+
+    if (fenceOpen === null) {
+      // Not inside a code block
+      if (fenceMatch) {
+        // Opening fence found
+        fenceOpen = fenceMatch[1];
+        blockLines = [line];
+      } else {
+        resultLines.push(line);
+      }
+    } else {
+      // Inside a code block — look for closing fence with same or more backticks
+      blockLines.push(line);
+      if (fenceMatch && fenceMatch[1].length >= fenceOpen.length && line.trim() === fenceMatch[1]) {
+        // Closing fence found
+        const original = blockLines.join("\n") + "\n";
+        const placeholder = `__CODE_BLOCK_${blockIndex++}__`;
+        map.set(placeholder, original);
+        const newlineCount = blockLines.length; // lines inside block = newlines to preserve
+        resultLines.push(placeholder + "\n".repeat(newlineCount - 1));
+        fenceOpen = null;
+        blockLines = [];
+      }
+    }
+  }
+
+  // If we ended inside an unclosed fence, emit lines as-is
+  if (fenceOpen !== null) {
+    resultLines.push(...blockLines);
+  }
+
+  let result = resultLines.join("\n");
 
   // Step 2: Replace inline code (single backtick, not within code blocks)
   result = result.replace(/`([^`\n]+)`/g, (match) => {

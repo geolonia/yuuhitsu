@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { translateFile, separateFrontmatter } from "../../../src/tasks/translate.js";
+import { translateFile, separateFrontmatter, protectCodeBlocks } from "../../../src/tasks/translate.js";
 import type { AIProvider, ChatCompletionResponse } from "../../../src/provider/interface.js";
 import { readFileSync, writeFileSync, existsSync, rmSync, mkdirSync } from "fs";
 import { join } from "path";
@@ -215,6 +215,43 @@ describe("Code block protection", () => {
     expect(output).toContain("````markdown");
     expect(output).toContain("const x = 1;");
     expect(output).not.toContain("__CODE_BLOCK_0__");
+  });
+});
+
+describe("protectCodeBlocks robustness", () => {
+  it("should handle many code blocks without stack overflow (ngsild.md pattern)", () => {
+    // protectCodeBlocks imported at top level
+
+    // Simulate ngsild.md: many short code blocks (http + json) interleaved with text/tables
+    const blocks: string[] = ["# NGSI-LD API\n"];
+    for (let i = 0; i < 50; i++) {
+      blocks.push(`## Section ${i}\n`);
+      blocks.push("```http\nGET /api/v1/entities\n```\n");
+      blocks.push("| Param | Type |\n|---|---|\n| id | string |\n");
+      blocks.push(`\`\`\`json\n{"id": "urn:entity:${i}"}\n\`\`\`\n`);
+      blocks.push(`Use \`param${i}\` for filtering.\n`);
+    }
+    const content = blocks.join("\n");
+
+    const result = protectCodeBlocks(content);
+    // 50 http blocks + 50 json blocks = 100 code blocks
+    expect(result.map.size).toBeGreaterThanOrEqual(100);
+    // 50 inline codes
+    expect(result.text).toContain("__INLINE_CODE_");
+    // No raw code blocks in output
+    expect(result.text).not.toMatch(/```http\n/);
+    expect(result.text).not.toMatch(/```json\n/);
+  });
+
+  it("should handle unclosed code fence gracefully", () => {
+    // protectCodeBlocks imported at top level
+
+    const content = "# Title\n\n```json\n{\"unclosed\": true}\n\nSome text after.";
+    const result = protectCodeBlocks(content);
+
+    // Unclosed fence should be emitted as-is, not swallowed
+    expect(result.text).toContain("```json");
+    expect(result.text).toContain('"unclosed"');
   });
 });
 
