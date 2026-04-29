@@ -248,8 +248,11 @@ export function splitAtPositions(
 
     if (segmentLines.length > maxChunkLines) {
       const subPositions = findHeadingPositions(segmentLines, 3);
-      if (subPositions.length > 0) {
-        result.push(...splitAtPositions(segmentLines, subPositions, maxChunkLines));
+      // Filter out position 0: splitting at the start doesn't reduce segment size
+      // and causes infinite recursion when the only heading is at position 0.
+      const effectivePositions = subPositions.filter((p) => p > 0);
+      if (effectivePositions.length > 0) {
+        result.push(...splitAtPositions(segmentLines, effectivePositions, maxChunkLines));
       } else {
         result.push(...safeSplitLines(segmentLines, maxChunkLines));
       }

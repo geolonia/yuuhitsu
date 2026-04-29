@@ -355,5 +355,66 @@ describe("Translate Task", () => {
       const chunks = splitIntoChunks(content, 100);
       expect(chunks.length).toBeGreaterThan(1);
     });
+
+    it("should not infinite-recurse when ### heading is at segment position 0", () => {
+      // Regression: splitAtPositions recursed infinitely when the only ###
+      // heading was at the start of a segment that exceeded maxChunkLines.
+      // This pattern occurs when protectBullets (translate-protected.ts) adds
+      // sentinel lines that push the segment over maxChunkLines.
+      const parts: string[] = [];
+      parts.push("## Section A");
+      parts.push("### Subsection at position 0");
+      // Fill with enough lines to exceed maxChunkLines
+      for (let i = 0; i < 350; i++) {
+        parts.push(`- Item ${i}: description text here`);
+      }
+      parts.push("## Section B");
+      parts.push("Short ending.");
+      const content = parts.join("\n");
+
+      // Must complete without stack overflow
+      const chunks = splitIntoChunks(content, 300);
+      expect(chunks.length).toBeGreaterThan(1);
+      // All content must be preserved
+      const rejoined = chunks.join("\n");
+      expect(rejoined).toContain("### Subsection at position 0");
+      expect(rejoined).toContain("Item 349");
+      expect(rejoined).toContain("## Section B");
+    });
+
+    it("should handle large files with many headings and bullet sentinels", () => {
+      // Simulates the ngsild.md pattern: many ### headings, code blocks,
+      // and %%LISTITEM%% sentinels from translate-protected.ts
+      const SENTINEL = "%%LISTITEM%%";
+      const parts: string[] = [];
+      for (let i = 0; i < 20; i++) {
+        parts.push(`## API Section ${i}`);
+        for (let j = 0; j < 5; j++) {
+          parts.push(`### Endpoint ${i}-${j}`);
+          parts.push("```http");
+          parts.push(`GET /api/v1/resource-${i}-${j}`);
+          parts.push("```");
+          parts.push(`Description of endpoint ${i}-${j}.`);
+          // Simulate bullet sentinels
+          parts.push(SENTINEL);
+          parts.push(`- Parameter a: value`);
+          parts.push(SENTINEL);
+          parts.push(`- Parameter b: value`);
+          parts.push("```json");
+          parts.push(`{"id": "entity-${i}-${j}"}`);
+          parts.push("```");
+        }
+      }
+      const content = parts.join("\n");
+      // 20 sections × 5 endpoints × ~12 lines = ~1200 lines
+
+      const chunks = splitIntoChunks(content, 300);
+      expect(chunks.length).toBeGreaterThan(1);
+      // No chunk should exceed maxChunkLines significantly
+      for (const chunk of chunks) {
+        // Allow some slack for code blocks that can't be split
+        expect(chunk.split("\n").length).toBeLessThan(600);
+      }
+    });
   });
 });
