@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from "fs";
+import { randomUUID } from "crypto";
 import { loadGlossary } from "./glossary.js";
 import { protectCodeBlocks, restoreCodeBlocks } from "./translate.js";
 
@@ -41,11 +42,12 @@ export function fixGlossary(
   // Protect code blocks, URLs, and URNs before replacement
   const { text: protectedContent, map: codeMap } = protectCodeBlocks(docContent);
 
-  // Also protect URLs and URNs with placeholders
+  // Also protect URLs and URNs with placeholders (UUID suffix prevents collision with document content)
   const urlMap = new Map<string, string>();
+  const urlUuid = randomUUID().replace(/-/g, "");
   let urlIndex = 0;
   const urlProtected = protectedContent.replace(/https?:\/\/\S+|urn:\S+/g, (match) => {
-    const placeholder = `__URL_${urlIndex++}__`;
+    const placeholder = `__YUUHITSU_URL_${urlUuid}_${urlIndex++}__`;
     urlMap.set(placeholder, match);
     return placeholder;
   });

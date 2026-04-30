@@ -499,6 +499,13 @@ export function reviewGlossary(glossaryPath: string): ReviewReport {
 // buildGlossaryPrompt — helper for translate integration
 // ---------------------------------------------------------------------------
 
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export function buildGlossaryPrompt(
   glossaryConfig: GlossaryConfig,
   targetLang: string
@@ -522,7 +529,7 @@ export function buildGlossaryPrompt(
     parts.push("STRICT BRAND TERMS — these must be used exactly as specified:");
     for (const term of blockTerms) {
       const canonical = term.translations[targetLang] ?? term.canonical;
-      parts.push(`  - "${term.canonical}" MUST be rendered as "${canonical}" (no exceptions)`);
+      parts.push(`  - "${escapeXml(term.canonical)}" MUST be rendered as "${escapeXml(canonical)}" (no exceptions)`);
     }
     parts.push("");
   }
@@ -534,11 +541,11 @@ export function buildGlossaryPrompt(
     const forbidden = term.do_not_use?.[targetLang] ?? [];
     const severity = term.severity ?? 'warn';
     const forbiddenXml = forbidden.length > 0
-      ? forbidden.map((f) => `    <do_not_use>${f}</do_not_use>`).join("\n")
+      ? forbidden.map((f) => `    <do_not_use>${escapeXml(f)}</do_not_use>`).join("\n")
       : "";
     const termEntry = [
-      `  <term canonical="${canonical}" severity="${severity}">`,
-      `    <source>${term.canonical}</source>`,
+      `  <term canonical="${escapeXml(canonical)}" severity="${severity}">`,
+      `    <source>${escapeXml(term.canonical)}</source>`,
       ...(forbiddenXml ? [forbiddenXml] : []),
       `  </term>`,
     ].join("\n");
@@ -558,21 +565,21 @@ export function buildGlossaryPrompt(
     "- severity=auto-fix: preferred form, machine-replaceable",
   );
 
-  // Few-shot examples
-  const exampleTerms = relevantTerms.slice(0, 2);
+  // Few-shot examples: take up to 3 terms that have do_not_use entries
+  const exampleTerms = relevantTerms
+    .filter((t) => (t.do_not_use?.[targetLang] ?? []).length > 0)
+    .slice(0, 3);
   if (exampleTerms.length > 0) {
     parts.push("", "Examples:");
     for (const term of exampleTerms) {
       const canonical = term.translations[targetLang] ?? term.canonical;
       const forbidden = term.do_not_use?.[targetLang] ?? [];
-      if (forbidden.length > 0) {
-        parts.push(
-          `<example>`,
-          `  <input>...${forbidden[0]}...</input>`,
-          `  <output>...${canonical}...</output>`,
-          `</example>`,
-        );
-      }
+      parts.push(
+        `<example>`,
+        `  <input>...${forbidden[0]}...</input>`,
+        `  <output>...${canonical}...</output>`,
+        `</example>`,
+      );
     }
   }
 
