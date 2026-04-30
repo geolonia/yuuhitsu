@@ -7,7 +7,11 @@ import {
   checkGlossary,
   syncGlossary,
   reviewGlossary,
+  type GlossarySeverity,
+  type GlossaryOutputFormat,
 } from "../../tasks/glossary.js";
+import { fixGlossary } from "../../tasks/glossary-fix.js";
+import { formatSarif } from "../../lib/sarif-formatter.js";
 import { formatError } from "../../errors.js";
 
 // ---------------------------------------------------------------------------
@@ -40,10 +44,36 @@ const checkCmd = new Command("check")
   .requiredOption("--input <file>", "Document file to check")
   .requiredOption("--glossary <path>", "Glossary file path")
   .requiredOption("--lang <code>", "Language code to check (e.g., ja, en)")
+  .option(
+    "--severity-filter <levels>",
+    "Comma-separated severity levels to report (block,warn,auto-fix)"
+  )
+  .option("--format <format>", "Output format: text, json, sarif (default: text)", "text")
   .action(async (opts) => {
     try {
-      const issues = checkGlossary(opts.input, opts.glossary, opts.lang);
+      const severityFilter = opts.severityFilter
+        ? (opts.severityFilter.split(",").map((s: string) => s.trim()) as GlossarySeverity[])
+        : undefined;
+      const format = (opts.format || "text") as GlossaryOutputFormat;
 
+      const issues = checkGlossary(opts.input, opts.glossary, opts.lang, {
+        severityFilter,
+        format,
+      });
+
+      if (format === "json") {
+        process.stdout.write(JSON.stringify(issues, null, 2) + "\n");
+        if (issues.length > 0) process.exit(1);
+        return;
+      }
+
+      if (format === "sarif") {
+        process.stdout.write(formatSarif(issues, opts.input) + "\n");
+        if (issues.length > 0) process.exit(1);
+        return;
+      }
+
+      // text format
       if (issues.length === 0) {
         process.stdout.write(
           `${chalk.green("✓")} No issues found in ${opts.input}\n`
@@ -57,11 +87,54 @@ const checkCmd = new Command("check")
 
       for (const issue of issues) {
         const location = issue.keyPath ? issue.keyPath : `Line ${issue.line}`;
+        const severityLabel = `[${issue.severity}]`;
         process.stdout.write(
-          `  ${location}: "${chalk.red(issue.forbidden)}" → use "${chalk.green(issue.canonical)}"\n`
+          `  ${location} ${severityLabel}: "${chalk.red(issue.forbidden)}" → use "${chalk.green(issue.canonical)}"\n`
         );
       }
       process.exit(1);
+    } catch (err: unknown) {
+      process.stderr.write(formatError(err) + "\n");
+      process.exit(1);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// glossary fix
+// ---------------------------------------------------------------------------
+
+const fixCmd = new Command("fix")
+  .description("Auto-replace severity=auto-fix terms in a document")
+  .requiredOption("--input <file>", "Document file to fix")
+  .requiredOption("--glossary <path>", "Glossary file path")
+  .requiredOption("--lang <code>", "Language code (e.g., ja, en)")
+  .option("--dry-run", "Show diff without modifying the file")
+  .action(async (opts) => {
+    try {
+      const result = fixGlossary(
+        resolve(process.cwd(), opts.input),
+        resolve(process.cwd(), opts.glossary),
+        opts.lang,
+        opts.dryRun ?? false
+      );
+
+      if (opts.dryRun) {
+        if (!result.changed) {
+          process.stdout.write(`${chalk.green("✓")} No auto-fix replacements needed.\n`);
+        } else {
+          process.stdout.write(
+            `${chalk.yellow("⚠")} Dry-run: ${result.replacements} replacement(s) would be applied.\n`
+          );
+        }
+      } else {
+        if (!result.changed) {
+          process.stdout.write(`${chalk.green("✓")} No auto-fix replacements needed.\n`);
+        } else {
+          process.stdout.write(
+            `${chalk.green("✓")} Applied ${result.replacements} replacement(s) in ${opts.input}\n`
+          );
+        }
+      }
     } catch (err: unknown) {
       process.stderr.write(formatError(err) + "\n");
       process.exit(1);
@@ -141,5 +214,6 @@ export const glossaryCommand = new Command("glossary")
   .description("Manage glossary for terminology consistency")
   .addCommand(initCmd)
   .addCommand(checkCmd)
+  .addCommand(fixCmd)
   .addCommand(syncCmd)
   .addCommand(reviewCmd);

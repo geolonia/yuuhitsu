@@ -14,7 +14,11 @@ import {
   syncGlossary,
   reviewGlossary,
   loadGlossary,
+  buildGlossaryPrompt,
+  type GlossaryConfig,
 } from "../../../src/tasks/glossary.js";
+import { fixGlossary } from "../../../src/tasks/glossary-fix.js";
+import { formatSarif } from "../../../src/lib/sarif-formatter.js";
 
 describe("Glossary Tasks", () => {
   let tempDir: string;
@@ -903,6 +907,376 @@ terms:
       const issues = checkGlossary(docPath, glossaryPath, "ja");
       expect(issues.length).toBeGreaterThan(0);
       expect(issues[0].keyPath).toBe("a.b.c");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Phase 3: severity schema
+  // ---------------------------------------------------------------------------
+  describe("severity schema", () => {
+    it("should default severity to 'warn' when not specified", () => {
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(
+        glossaryPath,
+        `version: 1
+languages: [ja]
+terms:
+  - canonical: "API"
+    type: noun
+    translations:
+      ja: "API"
+    do_not_use:
+      ja: ["ＡＰＩ"]
+`
+      );
+      const glossary = loadGlossary(glossaryPath);
+      expect(glossary!.terms[0].severity).toBe("warn");
+    });
+
+    it("should preserve explicit severity values", () => {
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(
+        glossaryPath,
+        `version: 1
+languages: [ja]
+terms:
+  - canonical: "GeonicDB"
+    type: noun
+    severity: block
+    translations:
+      ja: "GeonicDB"
+    do_not_use:
+      ja: ["ジオニックDB"]
+  - canonical: "webhook"
+    type: noun
+    severity: auto-fix
+    translations:
+      ja: "Webhook"
+    do_not_use:
+      ja: ["ウェブフック"]
+`
+      );
+      const glossary = loadGlossary(glossaryPath);
+      expect(glossary!.terms[0].severity).toBe("block");
+      expect(glossary!.terms[1].severity).toBe("auto-fix");
+    });
+
+    it("should throw on invalid severity value", () => {
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(
+        glossaryPath,
+        `version: 1
+languages: [ja]
+terms:
+  - canonical: "API"
+    type: noun
+    severity: invalid-level
+    translations:
+      ja: "API"
+`
+      );
+      expect(() => loadGlossary(glossaryPath)).toThrow(/invalid severity/i);
+    });
+
+    it("should include severity in GlossaryIssue", () => {
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(
+        glossaryPath,
+        `version: 1
+languages: [ja]
+terms:
+  - canonical: "GeonicDB"
+    type: noun
+    severity: block
+    translations:
+      ja: "GeonicDB"
+    do_not_use:
+      ja: ["ジオニックDB"]
+`
+      );
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "ジオニックDBを使ってください。\n");
+      const issues = checkGlossary(docPath, glossaryPath, "ja");
+      expect(issues).toHaveLength(1);
+      expect(issues[0].severity).toBe("block");
+    });
+
+    it("should filter issues by severityFilter", () => {
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(
+        glossaryPath,
+        `version: 1
+languages: [ja]
+terms:
+  - canonical: "GeonicDB"
+    type: noun
+    severity: block
+    translations:
+      ja: "GeonicDB"
+    do_not_use:
+      ja: ["ジオニックDB"]
+  - canonical: "webhook"
+    type: noun
+    severity: warn
+    translations:
+      ja: "Webhook"
+    do_not_use:
+      ja: ["ウェブフック"]
+`
+      );
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "ジオニックDBとウェブフックを使ってください。\n");
+
+      const blockOnly = checkGlossary(docPath, glossaryPath, "ja", {
+        severityFilter: ["block"],
+      });
+      expect(blockOnly).toHaveLength(1);
+      expect(blockOnly[0].severity).toBe("block");
+
+      const warnOnly = checkGlossary(docPath, glossaryPath, "ja", {
+        severityFilter: ["warn"],
+      });
+      expect(warnOnly).toHaveLength(1);
+      expect(warnOnly[0].severity).toBe("warn");
+
+      const all = checkGlossary(docPath, glossaryPath, "ja");
+      expect(all).toHaveLength(2);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Phase 1: buildGlossaryPrompt
+  // ---------------------------------------------------------------------------
+  describe("buildGlossaryPrompt", () => {
+    const makeConfig = (overrides?: Partial<GlossaryConfig>): GlossaryConfig => ({
+      version: 1,
+      languages: ["ja"],
+      terms: [
+        {
+          canonical: "GeonicDB",
+          type: "noun",
+          severity: "block",
+          translations: { ja: "GeonicDB" },
+          do_not_use: { ja: ["ジオニックDB"] },
+        },
+        {
+          canonical: "webhook",
+          type: "noun",
+          severity: "warn",
+          translations: { ja: "Webhook" },
+          do_not_use: { ja: ["ウェブフック"] },
+        },
+        {
+          canonical: "subscription",
+          type: "noun",
+          severity: "auto-fix",
+          translations: { ja: "サブスクリプション" },
+          do_not_use: { ja: ["サブスク"] },
+        },
+      ],
+      ...overrides,
+    });
+
+    it("should wrap glossary in XML tags", () => {
+      const prompt = buildGlossaryPrompt(makeConfig(), "ja");
+      expect(prompt).toContain("<glossary>");
+      expect(prompt).toContain("</glossary>");
+    });
+
+    it("should include severity attribute in term elements", () => {
+      const prompt = buildGlossaryPrompt(makeConfig(), "ja");
+      expect(prompt).toContain('severity="block"');
+      expect(prompt).toContain('severity="warn"');
+      expect(prompt).toContain('severity="auto-fix"');
+    });
+
+    it("should re-state severity=block terms at the top", () => {
+      const prompt = buildGlossaryPrompt(makeConfig(), "ja");
+      const blockHeaderIdx = prompt.indexOf("STRICT BRAND TERMS");
+      const glossaryIdx = prompt.indexOf("<glossary>");
+      expect(blockHeaderIdx).toBeGreaterThanOrEqual(0);
+      expect(blockHeaderIdx).toBeLessThan(glossaryIdx);
+    });
+
+    it("should include few-shot examples", () => {
+      const prompt = buildGlossaryPrompt(makeConfig(), "ja");
+      expect(prompt).toContain("<example>");
+      expect(prompt).toContain("<input>");
+      expect(prompt).toContain("<output>");
+    });
+
+    it("should include do_not_use in term XML", () => {
+      const prompt = buildGlossaryPrompt(makeConfig(), "ja");
+      expect(prompt).toContain("<do_not_use>");
+    });
+
+    it("should return empty string for empty relevant terms", () => {
+      const config: GlossaryConfig = {
+        version: 1,
+        languages: ["ja"],
+        terms: [],
+      };
+      expect(buildGlossaryPrompt(config, "ja")).toBe("");
+    });
+
+    it("should include canonical translation in term XML", () => {
+      const prompt = buildGlossaryPrompt(makeConfig(), "ja");
+      expect(prompt).toContain('canonical="GeonicDB"');
+      expect(prompt).toContain('canonical="Webhook"');
+      expect(prompt).toContain('canonical="サブスクリプション"');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: fixGlossary (glossary-fix.ts)
+  // ---------------------------------------------------------------------------
+  describe("fixGlossary", () => {
+    let glossaryPath: string;
+
+    beforeEach(() => {
+      glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(
+        glossaryPath,
+        `version: 1
+languages: [ja]
+terms:
+  - canonical: "GeonicDB"
+    type: noun
+    severity: block
+    translations:
+      ja: "GeonicDB"
+    do_not_use:
+      ja: ["ジオニックDB"]
+  - canonical: "webhook"
+    type: noun
+    severity: warn
+    translations:
+      ja: "Webhook"
+    do_not_use:
+      ja: ["ウェブフック"]
+  - canonical: "サブスクリプション"
+    type: noun
+    severity: auto-fix
+    translations:
+      ja: "サブスクリプション"
+    do_not_use:
+      ja: ["サブスク"]
+`
+      );
+    });
+
+    it("should replace severity=auto-fix terms", () => {
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "サブスクを契約してください。\n");
+      const result = fixGlossary(docPath, glossaryPath, "ja");
+      expect(result.replacements).toBeGreaterThan(0);
+      expect(result.changed).toBe(true);
+      const content = readFileSync(docPath, "utf-8");
+      // "サブスク" should be replaced by "サブスクリプション"
+      // Note: "サブスクリプション" contains "サブスク" as prefix — check exact pattern
+      expect(content).toContain("サブスクリプション");
+      expect(content).not.toContain("サブスクを"); // original pattern gone
+    });
+
+    it("should NOT replace severity=block or severity=warn terms", () => {
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "ジオニックDBとウェブフックを使ってください。\n");
+      const result = fixGlossary(docPath, glossaryPath, "ja");
+      expect(result.changed).toBe(false);
+      const content = readFileSync(docPath, "utf-8");
+      expect(content).toContain("ジオニックDB");
+      expect(content).toContain("ウェブフック");
+    });
+
+    it("should protect code blocks from replacement", () => {
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(
+        docPath,
+        "本文でサブスクを使ってください。\n\n```\nサブスクの例\n```\n"
+      );
+      const result = fixGlossary(docPath, glossaryPath, "ja");
+      const content = readFileSync(docPath, "utf-8");
+      expect(content).toContain("サブスクリプション"); // body replaced
+      expect(content).toContain("サブスクの例"); // code block protected
+    });
+
+    it("should protect URLs from replacement", () => {
+      const docPath = join(tempDir, "doc.md");
+      // URL containing the forbidden word should NOT be replaced
+      writeFileSync(docPath, "詳しくは https://example.com/サブスク を参照してください。\n");
+      const result = fixGlossary(docPath, glossaryPath, "ja");
+      const content = readFileSync(docPath, "utf-8");
+      expect(content).toContain("https://example.com/サブスク");
+    });
+
+    it("should not modify file in --dry-run mode", () => {
+      const docPath = join(tempDir, "doc.md");
+      const original = "サブスクを契約してください。\n";
+      writeFileSync(docPath, original);
+      const result = fixGlossary(docPath, glossaryPath, "ja", true);
+      expect(result.changed).toBe(true);
+      const content = readFileSync(docPath, "utf-8");
+      expect(content).toBe(original);
+    });
+
+    it("should return changed=false when no auto-fix replacements needed", () => {
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "サブスクリプションを契約してください。\n");
+      const result = fixGlossary(docPath, glossaryPath, "ja");
+      expect(result.changed).toBe(false);
+      expect(result.replacements).toBe(0);
+    });
+
+    it("should throw when glossary file not found", () => {
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "text\n");
+      expect(() =>
+        fixGlossary(docPath, join(tempDir, "nonexistent.yaml"), "ja")
+      ).toThrow(/not found/i);
+    });
+
+    it("should throw when doc file not found", () => {
+      expect(() =>
+        fixGlossary(join(tempDir, "nonexistent.md"), glossaryPath, "ja")
+      ).toThrow(/not found/i);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Phase 3: SARIF formatter
+  // ---------------------------------------------------------------------------
+  describe("formatSarif", () => {
+    it("should produce valid SARIF 2.1.0 JSON", () => {
+      const issues = [
+        {
+          forbidden: "ジオニックDB",
+          canonical: "GeonicDB",
+          line: 3,
+          severity: "block" as const,
+        },
+      ];
+      const sarif = JSON.parse(formatSarif(issues, "doc.md"));
+      expect(sarif.version).toBe("2.1.0");
+      expect(sarif.runs).toHaveLength(1);
+      expect(sarif.runs[0].results).toHaveLength(1);
+      expect(sarif.runs[0].results[0].level).toBe("error");
+      expect(sarif.runs[0].results[0].ruleId).toBe("yuuhitsu/glossary-violation");
+    });
+
+    it("should map severity to SARIF levels correctly", () => {
+      const issues = [
+        { forbidden: "a", canonical: "A", line: 1, severity: "block" as const },
+        { forbidden: "b", canonical: "B", line: 2, severity: "warn" as const },
+        { forbidden: "c", canonical: "C", line: 3, severity: "auto-fix" as const },
+      ];
+      const sarif = JSON.parse(formatSarif(issues, "doc.md"));
+      const levels = sarif.runs[0].results.map((r: { level: string }) => r.level);
+      expect(levels).toEqual(["error", "warning", "note"]);
+    });
+
+    it("should produce empty results for no issues", () => {
+      const sarif = JSON.parse(formatSarif([], "doc.md"));
+      expect(sarif.runs[0].results).toHaveLength(0);
     });
   });
 });

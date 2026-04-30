@@ -6,11 +6,15 @@ import { separateFrontmatter, protectCodeBlocks } from "./translate.js";
 // Types
 // ---------------------------------------------------------------------------
 
+export type GlossarySeverity = 'block' | 'warn' | 'auto-fix';
+
 export interface GlossaryTerm {
   canonical: string;
   type: string;
   translations: Record<string, string>;
   do_not_use?: Record<string, string[]>;
+  /** Severity level for violations. Defaults to 'warn' if omitted. */
+  severity?: GlossarySeverity;
 }
 
 export interface GlossaryConfig {
@@ -23,8 +27,18 @@ export interface GlossaryIssue {
   forbidden: string;
   canonical: string;
   line: number;
+  severity: GlossarySeverity;
   /** JSON mode only: dot-notation key path (e.g. "dashboard.title", "items[0]") */
   keyPath?: string;
+}
+
+export type GlossaryOutputFormat = 'text' | 'json' | 'sarif';
+
+export interface CheckGlossaryOptions {
+  /** Only report issues with these severity levels (default: all) */
+  severityFilter?: GlossarySeverity[];
+  /** Output format (default: 'text') */
+  format?: GlossaryOutputFormat;
 }
 
 export interface MissingTranslation {
@@ -97,7 +111,22 @@ export function loadGlossary(glossaryPath: string): GlossaryConfig | null {
     throw new Error(`Glossary file must have a "languages" array: ${glossaryPath}`);
   }
 
-  return raw as GlossaryConfig;
+  const config = raw as GlossaryConfig;
+
+  // Validate severity fields
+  const validSeverities: GlossarySeverity[] = ['block', 'warn', 'auto-fix'];
+  for (const term of config.terms) {
+    if (term.severity !== undefined && !validSeverities.includes(term.severity)) {
+      throw new Error(
+        `Invalid severity "${term.severity}" for term "${term.canonical}". Must be one of: ${validSeverities.join(', ')}`
+      );
+    }
+    if (term.severity === undefined) {
+      term.severity = 'warn';
+    }
+  }
+
+  return config;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +150,8 @@ export function initGlossary(outputPath: string, force?: boolean): void {
 export function checkGlossary(
   docPath: string,
   glossaryPath: string,
-  lang: string
+  lang: string,
+  options?: CheckGlossaryOptions
 ): GlossaryIssue[] {
   // Load glossary (throws if not found)
   const glossary = loadGlossary(glossaryPath);
@@ -177,6 +207,7 @@ export function checkGlossary(
               forbidden: forbiddenWord,
               canonical: term.canonical,
               line: 0,
+              severity: term.severity ?? 'warn',
               keyPath,
             });
           }
@@ -184,7 +215,7 @@ export function checkGlossary(
       }
     }
 
-    return issues;
+    return applyFilter(issues, options);
   }
 
   // Markdown mode: separate frontmatter, protect code blocks, check line by line
@@ -213,13 +244,21 @@ export function checkGlossary(
             forbidden: forbiddenWord,
             canonical: term.canonical,
             line: i + 1 + frontmatterLineCount,
+            severity: term.severity ?? 'warn',
           });
         }
       }
     }
   }
 
-  return issues;
+  return applyFilter(issues, options);
+}
+
+function applyFilter(issues: GlossaryIssue[], options?: CheckGlossaryOptions): GlossaryIssue[] {
+  if (!options?.severityFilter || options.severityFilter.length === 0) {
+    return issues;
+  }
+  return issues.filter((issue) => options.severityFilter!.includes(issue.severity));
 }
 
 // ---------------------------------------------------------------------------
@@ -472,20 +511,70 @@ export function buildGlossaryPrompt(
     return "";
   }
 
-  const lines: string[] = [
-    "",
-    "Glossary — use these canonical translations and avoid forbidden terms:",
-  ];
+  // canonical-first: sort by canonical name so reference order is predictable
+  const blockTerms = relevantTerms.filter((t) => t.severity === 'block');
+  const otherTerms = relevantTerms.filter((t) => t.severity !== 'block');
 
-  for (const term of relevantTerms) {
-    const canonical = term.translations[targetLang] ?? term.canonical;
-    const forbidden = term.do_not_use?.[targetLang] ?? [];
-    let line = `- "${term.canonical}" → "${canonical}"`;
-    if (forbidden.length > 0) {
-      line += ` (do NOT use: ${forbidden.map((f) => `"${f}"`).join(", ")})`;
+  const parts: string[] = [];
+
+  // Severity=block terms are re-stated at the top for emphasis
+  if (blockTerms.length > 0) {
+    parts.push("STRICT BRAND TERMS — these must be used exactly as specified:");
+    for (const term of blockTerms) {
+      const canonical = term.translations[targetLang] ?? term.canonical;
+      parts.push(`  - "${term.canonical}" MUST be rendered as "${canonical}" (no exceptions)`);
     }
-    lines.push(line);
+    parts.push("");
   }
 
-  return lines.join("\n");
+  // XML-wrapped glossary body
+  const termXml: string[] = [];
+  for (const term of [...blockTerms, ...otherTerms]) {
+    const canonical = term.translations[targetLang] ?? term.canonical;
+    const forbidden = term.do_not_use?.[targetLang] ?? [];
+    const severity = term.severity ?? 'warn';
+    const forbiddenXml = forbidden.length > 0
+      ? forbidden.map((f) => `    <do_not_use>${f}</do_not_use>`).join("\n")
+      : "";
+    const termEntry = [
+      `  <term canonical="${canonical}" severity="${severity}">`,
+      `    <source>${term.canonical}</source>`,
+      ...(forbiddenXml ? [forbiddenXml] : []),
+      `  </term>`,
+    ].join("\n");
+    termXml.push(termEntry);
+  }
+
+  parts.push(
+    "<glossary>",
+    termXml.join("\n"),
+    "</glossary>",
+    "",
+    "Glossary usage rules:",
+    "- Use the canonical translation for each term",
+    "- Never use any do_not_use alternatives",
+    "- severity=block: strict brand requirement, zero exceptions",
+    "- severity=warn: strong preference, use canonical unless context requires otherwise",
+    "- severity=auto-fix: preferred form, machine-replaceable",
+  );
+
+  // Few-shot examples
+  const exampleTerms = relevantTerms.slice(0, 2);
+  if (exampleTerms.length > 0) {
+    parts.push("", "Examples:");
+    for (const term of exampleTerms) {
+      const canonical = term.translations[targetLang] ?? term.canonical;
+      const forbidden = term.do_not_use?.[targetLang] ?? [];
+      if (forbidden.length > 0) {
+        parts.push(
+          `<example>`,
+          `  <input>...${forbidden[0]}...</input>`,
+          `  <output>...${canonical}...</output>`,
+          `</example>`,
+        );
+      }
+    }
+  }
+
+  return "\n" + parts.join("\n");
 }
