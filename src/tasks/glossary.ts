@@ -526,12 +526,12 @@ export function buildGlossaryPrompt(
 
   const parts: string[] = [];
 
-  // Severity=block terms are re-stated at the top for emphasis
+  // Severity=block terms are re-stated at the top for emphasis (plain text, no XML escaping)
   if (blockTerms.length > 0) {
     parts.push("STRICT BRAND TERMS — these must be used exactly as specified:");
     for (const term of blockTerms) {
       const canonical = term.translations[targetLang] ?? term.canonical;
-      parts.push(`  - "${escapeXml(term.canonical)}" MUST be rendered as "${escapeXml(canonical)}" (no exceptions)`);
+      parts.push(`  - "${term.canonical}" MUST be rendered as "${canonical}" (no exceptions)`);
     }
     parts.push("");
   }
@@ -567,14 +567,20 @@ export function buildGlossaryPrompt(
     "- severity=auto-fix: preferred form, machine-replaceable",
   );
 
-  // Few-shot examples: take up to 3 terms that have do_not_use entries
+  // Few-shot examples: take up to 3 terms that have do_not_use entries and a non-empty translation
+  const renderedTermCanonical = (term: GlossaryTerm) =>
+    term.translations[targetLang]?.trim() || term.canonical;
   const exampleTerms = relevantTerms
-    .filter((t) => (t.do_not_use?.[targetLang] ?? []).length > 0)
+    .filter(
+      (t) =>
+        (t.do_not_use?.[targetLang] ?? []).length > 0 &&
+        !!(t.translations[targetLang]?.trim())
+    )
     .slice(0, 3);
   if (exampleTerms.length > 0) {
     parts.push("", "Examples:");
     for (const term of exampleTerms) {
-      const canonical = term.translations[targetLang] ?? term.canonical;
+      const canonical = renderedTermCanonical(term);
       const forbidden = term.do_not_use?.[targetLang] ?? [];
       parts.push(
         `<example>`,
