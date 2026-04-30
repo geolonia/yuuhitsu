@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.10] - 2026-04-30
+
+### Added
+- Phase 1: translate prompt 強化（XML tag wrap, canonical-first, few-shot, severity=block 先頭再掲）
+- Phase 2: `yuuhitsu glossary fix` 新サブコマンド（severity=auto-fix 語の機械置換、--dry-run 対応）
+- Phase 3: glossary.yaml schema に severity フィールド追加（block/warn/auto-fix 3段階、既定 warn）
+- `yuuhitsu glossary check` に --severity-filter / --format (json|sarif|text) オプション追加
+- SARIF 2.1.0 出力フォーマット対応（`src/lib/sarif-formatter.ts`）
+
+### Changed
+- buildGlossaryPrompt() を XML tag wrap 形式に刷新（翻訳精度向上、token 増加 5-10% 許容）
+
+### Notes
+- severity 未指定の既存 glossary.yaml は 0.1.9 と同等に動作（後方互換）
+
+Closes https://github.com/geolonia/yuuhitsu/issues/40
+
 ## [0.1.9] - 2026-04-29
 
 ### Fixed

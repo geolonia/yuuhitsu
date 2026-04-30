@@ -128,7 +128,12 @@ describe("Glossary CLI Command", () => {
         ["--input", docPath, "--glossary", glossaryPath, "--lang", "en"],
         { from: "user" }
       );
-      expect(checkGlossary).toHaveBeenCalledWith(docPath, glossaryPath, "en");
+      expect(checkGlossary).toHaveBeenCalledWith(
+        docPath,
+        glossaryPath,
+        "en",
+        { severityFilter: undefined, format: "text" }
+      );
     });
 
     it("should print 'no issues' when check returns empty array", async () => {
