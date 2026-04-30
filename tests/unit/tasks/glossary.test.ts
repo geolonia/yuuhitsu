@@ -1345,8 +1345,7 @@ terms:
       };
       const prompt = buildGlossaryPrompt(config, "ja");
       const exampleCount = (prompt.match(/<example>/g) ?? []).length;
-      expect(exampleCount).toBeGreaterThanOrEqual(1);
-      expect(exampleCount).toBeLessThanOrEqual(3);
+      expect(exampleCount).toBe(3);
     });
 
     it("should include examples only from terms with do_not_use entries", () => {

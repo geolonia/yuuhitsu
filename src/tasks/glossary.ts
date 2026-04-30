@@ -503,7 +503,9 @@ function escapeXml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 export function buildGlossaryPrompt(
@@ -576,8 +578,8 @@ export function buildGlossaryPrompt(
       const forbidden = term.do_not_use?.[targetLang] ?? [];
       parts.push(
         `<example>`,
-        `  <input>...${forbidden[0]}...</input>`,
-        `  <output>...${canonical}...</output>`,
+        `  <input>...${escapeXml(forbidden[0])}...</input>`,
+        `  <output>...${escapeXml(canonical)}...</output>`,
         `</example>`,
       );
     }
