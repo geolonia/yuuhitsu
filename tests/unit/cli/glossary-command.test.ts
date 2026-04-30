@@ -103,6 +103,73 @@ describe("Glossary CLI Command", () => {
     });
   });
 
+  describe("glossary check — enum validation", () => {
+    it("should exit 1 with error message for invalid --severity-filter value", async () => {
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "# Test\n");
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(glossaryPath, "version: 1\nlanguages: [ja, en]\nterms: []\n");
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const checkCmd = glossaryCommand.commands.find((c) => c.name() === "check")!;
+      await expect(
+        checkCmd.parseAsync(
+          ["--input", docPath, "--glossary", glossaryPath, "--lang", "ja", "--severity-filter", "invalid"],
+          { from: "user" }
+        )
+      ).rejects.toThrow();
+
+      const stderr = stderrSpy.mock.calls.map((c) => c[0]).join("");
+      expect(stderr).toContain("Invalid --severity-filter value 'invalid'");
+      expect(stderr).toContain("block, warn, auto-fix");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      exitSpy.mockRestore();
+    });
+
+    it("should exit 1 with error message for invalid --format value", async () => {
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "# Test\n");
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(glossaryPath, "version: 1\nlanguages: [ja, en]\nterms: []\n");
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const checkCmd = glossaryCommand.commands.find((c) => c.name() === "check")!;
+      await expect(
+        checkCmd.parseAsync(
+          ["--input", docPath, "--glossary", glossaryPath, "--lang", "ja", "--format", "xml"],
+          { from: "user" }
+        )
+      ).rejects.toThrow();
+
+      const stderr = stderrSpy.mock.calls.map((c) => c[0]).join("");
+      expect(stderr).toContain("Invalid --format value 'xml'");
+      expect(stderr).toContain("text, json, sarif");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      exitSpy.mockRestore();
+    });
+
+    it("should accept valid comma-separated --severity-filter values", async () => {
+      vi.mocked(checkGlossary).mockReturnValue([]);
+      const docPath = join(tempDir, "doc.md");
+      writeFileSync(docPath, "# Test\n");
+      const glossaryPath = join(tempDir, "glossary.yaml");
+      writeFileSync(glossaryPath, "version: 1\nlanguages: [ja, en]\nterms: []\n");
+
+      const checkCmd = glossaryCommand.commands.find((c) => c.name() === "check")!;
+      await checkCmd.parseAsync(
+        ["--input", docPath, "--glossary", glossaryPath, "--lang", "ja", "--severity-filter", "block,warn"],
+        { from: "user" }
+      );
+      expect(checkGlossary).toHaveBeenCalled();
+    });
+  });
+
   describe("glossary check subcommand", () => {
     it("should require --input option", async () => {
       const checkCmd = glossaryCommand.commands.find((c) => c.name() === "check")!;

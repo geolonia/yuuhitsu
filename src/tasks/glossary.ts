@@ -499,6 +499,15 @@ export function reviewGlossary(glossaryPath: string): ReviewReport {
 // buildGlossaryPrompt — helper for translate integration
 // ---------------------------------------------------------------------------
 
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 export function buildGlossaryPrompt(
   glossaryConfig: GlossaryConfig,
   targetLang: string
@@ -511,17 +520,23 @@ export function buildGlossaryPrompt(
     return "";
   }
 
+  // Unified helper: treat empty-string stubs (from syncGlossary) as missing
+  const renderedTermCanonical = (term: GlossaryTerm): string => {
+    const raw = term.translations[targetLang];
+    return (typeof raw === "string" && raw.trim().length > 0) ? raw.trim() : term.canonical;
+  };
+
   // canonical-first: sort by canonical name so reference order is predictable
   const blockTerms = relevantTerms.filter((t) => t.severity === 'block');
   const otherTerms = relevantTerms.filter((t) => t.severity !== 'block');
 
   const parts: string[] = [];
 
-  // Severity=block terms are re-stated at the top for emphasis
+  // Severity=block terms are re-stated at the top for emphasis (plain text, no XML escaping)
   if (blockTerms.length > 0) {
     parts.push("STRICT BRAND TERMS — these must be used exactly as specified:");
     for (const term of blockTerms) {
-      const canonical = term.translations[targetLang] ?? term.canonical;
+      const canonical = renderedTermCanonical(term);
       parts.push(`  - "${term.canonical}" MUST be rendered as "${canonical}" (no exceptions)`);
     }
     parts.push("");
@@ -530,15 +545,15 @@ export function buildGlossaryPrompt(
   // XML-wrapped glossary body
   const termXml: string[] = [];
   for (const term of [...blockTerms, ...otherTerms]) {
-    const canonical = term.translations[targetLang] ?? term.canonical;
+    const canonical = renderedTermCanonical(term);
     const forbidden = term.do_not_use?.[targetLang] ?? [];
     const severity = term.severity ?? 'warn';
     const forbiddenXml = forbidden.length > 0
-      ? forbidden.map((f) => `    <do_not_use>${f}</do_not_use>`).join("\n")
+      ? forbidden.map((f) => `    <do_not_use>${escapeXml(f)}</do_not_use>`).join("\n")
       : "";
     const termEntry = [
-      `  <term canonical="${canonical}" severity="${severity}">`,
-      `    <source>${term.canonical}</source>`,
+      `  <term canonical="${escapeXml(canonical)}" severity="${severity}">`,
+      `    <source>${escapeXml(term.canonical)}</source>`,
       ...(forbiddenXml ? [forbiddenXml] : []),
       `  </term>`,
     ].join("\n");
@@ -558,21 +573,31 @@ export function buildGlossaryPrompt(
     "- severity=auto-fix: preferred form, machine-replaceable",
   );
 
-  // Few-shot examples
-  const exampleTerms = relevantTerms.slice(0, 2);
+  // Few-shot examples: take up to 3 terms that have do_not_use entries and a non-empty translation
+  const exampleTerms = relevantTerms
+    .filter(
+      (t) => {
+        const raw = t.translations[targetLang];
+        return (
+          (t.do_not_use?.[targetLang] ?? []).length > 0 &&
+          typeof raw === "string" && raw.trim().length > 0
+        );
+      }
+    )
+    .slice(0, 3);
   if (exampleTerms.length > 0) {
     parts.push("", "Examples:");
     for (const term of exampleTerms) {
-      const canonical = term.translations[targetLang] ?? term.canonical;
+      const canonical = renderedTermCanonical(term);
       const forbidden = term.do_not_use?.[targetLang] ?? [];
-      if (forbidden.length > 0) {
-        parts.push(
-          `<example>`,
-          `  <input>...${forbidden[0]}...</input>`,
-          `  <output>...${canonical}...</output>`,
-          `</example>`,
-        );
-      }
+      const firstForbidden = forbidden.find((f) => typeof f === "string" && f.trim().length > 0);
+      if (!firstForbidden) continue;
+      parts.push(
+        `<example>`,
+        `  <input>...${escapeXml(firstForbidden)}...</input>`,
+        `  <output>...${escapeXml(canonical)}...</output>`,
+        `</example>`,
+      );
     }
   }
 

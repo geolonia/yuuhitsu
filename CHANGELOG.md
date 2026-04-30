@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.11] - 2026-04-30
+
+### Fixed
+- `yuuhitsu glossary check`: --severity-filter に無効値を渡すと exit 1 + 具体的エラーメッセージを出力
+- `yuuhitsu glossary check`: --format に無効値を渡すと exit 1 + 具体的エラーメッセージを出力
+- `yuuhitsu glossary fix`: URL placeholder に UUID suffix を付加し、本文中の `__URL_N__` パターンとの衝突リスクを解消
+- `buildGlossaryPrompt`: XML 出力で `&` `<` `>` を正しくエスケープ（`&amp;` `&lt;` `&gt;`）
+- `buildGlossaryPrompt`: few-shot example を do_not_use あり項目から最大 3 件取得するよう修正（旧: slice(0,2) で 0〜1 件しか取れないケースあり）
+
+Closes https://github.com/geolonia/yuuhitsu/issues/42
+
 ## [0.1.10] - 2026-04-30
 
 ### Added

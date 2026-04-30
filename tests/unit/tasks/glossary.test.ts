@@ -1243,6 +1243,202 @@ terms:
   });
 
   // ---------------------------------------------------------------------------
+  // CodeRabbit fix: buildGlossaryPrompt — XML escaping
+  // ---------------------------------------------------------------------------
+  describe("buildGlossaryPrompt — XML escaping", () => {
+    it("should escape & in canonical term name", () => {
+      const config: GlossaryConfig = {
+        version: 1,
+        languages: ["en"],
+        terms: [
+          {
+            canonical: "A & B",
+            type: "noun",
+            severity: "warn",
+            translations: { en: "A & B" },
+            do_not_use: { en: ["A and B"] },
+          },
+        ],
+      };
+      const prompt = buildGlossaryPrompt(config, "en");
+      expect(prompt).toContain("&amp;");
+      expect(prompt).not.toContain(' canonical="A & B"');
+    });
+
+    it("should escape < and > in do_not_use values", () => {
+      const config: GlossaryConfig = {
+        version: 1,
+        languages: ["en"],
+        terms: [
+          {
+            canonical: "tag",
+            type: "noun",
+            severity: "warn",
+            translations: { en: "tag" },
+            do_not_use: { en: ["<tag>"] },
+          },
+        ],
+      };
+      const prompt = buildGlossaryPrompt(config, "en");
+      expect(prompt).toContain("&lt;tag&gt;");
+      expect(prompt).not.toContain("<do_not_use><tag></do_not_use>");
+    });
+
+    it("should produce valid XML structure with special characters in glossary", () => {
+      const config: GlossaryConfig = {
+        version: 1,
+        languages: ["en"],
+        terms: [
+          {
+            canonical: "R&D",
+            type: "noun",
+            severity: "block",
+            translations: { en: "R&D" },
+            do_not_use: { en: ["R & D", "R<D"] },
+          },
+        ],
+      };
+      const prompt = buildGlossaryPrompt(config, "en");
+      expect(prompt).toContain("&amp;");
+      expect(prompt).toContain("&lt;");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // CodeRabbit fix: buildGlossaryPrompt — few-shot example count
+  // ---------------------------------------------------------------------------
+  describe("buildGlossaryPrompt — few-shot examples", () => {
+    it("should include up to 3 few-shot examples", () => {
+      const config: GlossaryConfig = {
+        version: 1,
+        languages: ["ja"],
+        terms: [
+          {
+            canonical: "Term1",
+            type: "noun",
+            severity: "warn",
+            translations: { ja: "ターム1" },
+            do_not_use: { ja: ["旧称1"] },
+          },
+          {
+            canonical: "Term2",
+            type: "noun",
+            severity: "warn",
+            translations: { ja: "ターム2" },
+            do_not_use: { ja: ["旧称2"] },
+          },
+          {
+            canonical: "Term3",
+            type: "noun",
+            severity: "warn",
+            translations: { ja: "ターム3" },
+            do_not_use: { ja: ["旧称3"] },
+          },
+          {
+            canonical: "Term4",
+            type: "noun",
+            severity: "warn",
+            translations: { ja: "ターム4" },
+            do_not_use: { ja: ["旧称4"] },
+          },
+        ],
+      };
+      const prompt = buildGlossaryPrompt(config, "ja");
+      const exampleCount = (prompt.match(/<example>/g) ?? []).length;
+      expect(exampleCount).toBe(3);
+    });
+
+    it("should include examples only from terms with do_not_use entries", () => {
+      const config: GlossaryConfig = {
+        version: 1,
+        languages: ["ja"],
+        terms: [
+          {
+            canonical: "NoForbidden",
+            type: "noun",
+            severity: "warn",
+            translations: { ja: "禁止語なし" },
+          },
+          {
+            canonical: "HasForbidden",
+            type: "noun",
+            severity: "warn",
+            translations: { ja: "禁止語あり" },
+            do_not_use: { ja: ["旧称"] },
+          },
+        ],
+      };
+      const prompt = buildGlossaryPrompt(config, "ja");
+      const exampleCount = (prompt.match(/<example>/g) ?? []).length;
+      expect(exampleCount).toBe(1);
+      expect(prompt).toContain("旧称");
+    });
+
+    it("should produce no examples when no terms have do_not_use", () => {
+      const config: GlossaryConfig = {
+        version: 1,
+        languages: ["ja"],
+        terms: [
+          {
+            canonical: "Term",
+            type: "noun",
+            severity: "warn",
+            translations: { ja: "用語" },
+          },
+        ],
+      };
+      const prompt = buildGlossaryPrompt(config, "ja");
+      expect(prompt).not.toContain("<example>");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // CodeRabbit fix: fixGlossary — UUID placeholder collision prevention
+  // ---------------------------------------------------------------------------
+  describe("fixGlossary — UUID placeholder collision", () => {
+    let glossaryPath: string;
+
+    beforeEach(() => {
+      glossaryPath = join(tempDir, "glossary-uuid.yaml");
+      writeFileSync(
+        glossaryPath,
+        `version: 1
+languages: [ja]
+terms:
+  - canonical: "サブスクリプション"
+    type: noun
+    severity: auto-fix
+    translations:
+      ja: "サブスクリプション"
+    do_not_use:
+      ja: ["サブスク"]
+`
+      );
+    });
+
+    it("should correctly handle document containing legacy placeholder pattern __URL_0__", () => {
+      const docPath = join(tempDir, "doc-placeholder.md");
+      const original = "このドキュメントには __URL_0__ というテキストとサブスクへの言及があります。\n";
+      writeFileSync(docPath, original);
+      const result = fixGlossary(docPath, glossaryPath, "ja");
+      const content = readFileSync(docPath, "utf-8");
+      expect(content).toContain("__URL_0__");
+      expect(content).toContain("サブスクリプション");
+      expect(result.changed).toBe(true);
+    });
+
+    it("should not corrupt document when URL contains forbidden word", () => {
+      const docPath = join(tempDir, "doc-url.md");
+      writeFileSync(docPath, "参照: https://example.com/サブスク/overview\nサブスクを使ってください。\n");
+      const result = fixGlossary(docPath, glossaryPath, "ja");
+      const content = readFileSync(docPath, "utf-8");
+      expect(content).toContain("https://example.com/サブスク/overview");
+      expect(content).toContain("サブスクリプションを使ってください");
+      expect(result.replacements).toBe(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Phase 3: SARIF formatter
   // ---------------------------------------------------------------------------
   describe("formatSarif", () => {

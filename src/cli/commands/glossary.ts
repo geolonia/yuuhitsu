@@ -51,6 +51,29 @@ const checkCmd = new Command("check")
   .option("--format <format>", "Output format: text, json, sarif (default: text)", "text")
   .action(async (opts) => {
     try {
+      // Validate --severity-filter values
+      const validSeverityLevels: GlossarySeverity[] = ['block', 'warn', 'auto-fix'];
+      if (opts.severityFilter) {
+        const levels = opts.severityFilter.split(",").map((s: string) => s.trim());
+        for (const level of levels) {
+          if (!validSeverityLevels.includes(level as GlossarySeverity)) {
+            process.stderr.write(
+              `Invalid --severity-filter value '${level}'. Must be one of: block, warn, auto-fix\n`
+            );
+            process.exit(1);
+          }
+        }
+      }
+
+      // Validate --format value
+      const validFormats: GlossaryOutputFormat[] = ['text', 'json', 'sarif'];
+      if (!validFormats.includes(opts.format as GlossaryOutputFormat)) {
+        process.stderr.write(
+          `Invalid --format value '${opts.format}'. Must be one of: text, json, sarif\n`
+        );
+        process.exit(1);
+      }
+
       const severityFilter = opts.severityFilter
         ? (opts.severityFilter.split(",").map((s: string) => s.trim()) as GlossarySeverity[])
         : undefined;
