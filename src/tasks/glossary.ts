@@ -590,9 +590,11 @@ export function buildGlossaryPrompt(
     for (const term of exampleTerms) {
       const canonical = renderedTermCanonical(term);
       const forbidden = term.do_not_use?.[targetLang] ?? [];
+      const firstForbidden = forbidden.find((f) => typeof f === "string" && f.trim().length > 0);
+      if (!firstForbidden) continue;
       parts.push(
         `<example>`,
-        `  <input>...${escapeXml(forbidden[0])}...</input>`,
+        `  <input>...${escapeXml(firstForbidden)}...</input>`,
         `  <output>...${escapeXml(canonical)}...</output>`,
         `</example>`,
       );
