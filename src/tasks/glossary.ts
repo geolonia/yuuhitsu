@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { parse, stringify } from "yaml";
-import { separateFrontmatter, protectCodeBlocks } from "./translate.js";
+import { separateFrontmatter } from "./translate.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -218,35 +218,58 @@ export function checkGlossary(
     return applyFilter(issues, options);
   }
 
-  // Markdown mode: separate frontmatter, protect code blocks, check line by line
+  // Markdown mode: separate frontmatter, then scan original body lines directly.
+  // This preserves original line numbers even though protectCodeBlocks no longer
+  // adds newline padding (padding removal was needed to fix chunk boundary splits).
   const { frontmatter, body } = separateFrontmatter(docContent);
   const frontmatterLineCount = frontmatter ? frontmatter.split("\n").length - 1 : 0;
 
-  // Protect code blocks and inline code with placeholders to avoid false positives
-  const { text: protectedBody } = protectCodeBlocks(body);
-
-  const lines = protectedBody.split("\n");
+  const bodyLines = body.split("\n");
   const issues: GlossaryIssue[] = [];
+  let inFencedBlock = false;
+  let fenceMarker: string | null = null;
 
-  for (const term of glossary.terms) {
-    const forbidden = term.do_not_use?.[lang] ?? [];
-    const canonicalTranslation = term.translations[lang];
-    for (const forbiddenWord of forbidden) {
-      if (forbiddenWord.length === 0) continue;
-      for (let i = 0; i < lines.length; i++) {
-        // Remove URL/URN content before checking to avoid false positives
-        const lineWithoutUrls = lines[i]
-          .replace(/https?:\/\/\S+/g, "")
-          .replace(/\]\([^)]+\)/g, "")
-          .replace(/urn:\S+/g, "");
-        if (hasUncoveredOccurrence(lineWithoutUrls, forbiddenWord, canonicalTranslation)) {
-          issues.push({
-            forbidden: forbiddenWord,
-            canonical: term.canonical,
-            line: i + 1 + frontmatterLineCount,
-            severity: term.severity ?? 'warn',
-          });
+  for (let i = 0; i < bodyLines.length; i++) {
+    const line = bodyLines[i];
+    const fenceMatch = line.match(/^(`{3,})/);
+
+    if (!inFencedBlock) {
+      if (fenceMatch) {
+        inFencedBlock = true;
+        fenceMarker = fenceMatch[1];
+        continue;
+      }
+      // Strip inline code and URL/URN content before checking to avoid false positives
+      const lineClean = line
+        .replace(/`[^`\n]+`/g, "")
+        .replace(/https?:\/\/\S+/g, "")
+        .replace(/\]\([^)]+\)/g, "")
+        .replace(/urn:\S+/g, "");
+
+      for (const term of glossary.terms) {
+        const forbidden = term.do_not_use?.[lang] ?? [];
+        const canonicalTranslation = term.translations[lang];
+        for (const forbiddenWord of forbidden) {
+          if (forbiddenWord.length === 0) continue;
+          if (hasUncoveredOccurrence(lineClean, forbiddenWord, canonicalTranslation)) {
+            issues.push({
+              forbidden: forbiddenWord,
+              canonical: term.canonical,
+              line: i + 1 + frontmatterLineCount,
+              severity: term.severity ?? 'warn',
+            });
+          }
         }
+      }
+    } else {
+      // Inside a fenced code block — look for closing fence
+      if (
+        fenceMatch &&
+        fenceMatch[1].length >= fenceMarker!.length &&
+        line.trim() === fenceMatch[1]
+      ) {
+        inFencedBlock = false;
+        fenceMarker = null;
       }
     }
   }

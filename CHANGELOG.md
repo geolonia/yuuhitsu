@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.12] - 2026-05-01
+
+### Fixed
+- `protectCodeBlocks`: code blocks are now stored as a single-line placeholder (no empty-line padding). Padding caused chunk boundaries to fall inside the whitespace region of large code blocks when using `--max-chunk-lines`, leading to non-deterministic LLM output and broken code fences in translated files (root cause of cmd_328 / cli.md build failure).
+- `checkGlossary`: rewrote line scanning to iterate original body lines directly instead of relying on protected-body line indices, so reported line numbers remain accurate after the `protectCodeBlocks` padding removal.
+
+### Notes
+- A 120-line code block (e.g., Command Tree in `cli.md`) is now represented as 1 line in the protected body. With `--max-chunk-lines 100`, such a section is no longer force-split, eliminating the code fence break that caused Vue parser errors downstream.
+
+Closes https://github.com/geolonia/yuuhitsu/issues/44
+
 ## [0.1.11] - 2026-04-30
 
 ### Fixed
