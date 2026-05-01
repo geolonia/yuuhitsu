@@ -221,6 +221,148 @@ describe("Code block protection", () => {
   });
 });
 
+describe("Code-block boundary protection in chunk splitting (0.1.12)", () => {
+  it("should represent each code block as a single placeholder line (no padding)", () => {
+    const codeBlock = "```text\n" + Array.from({ length: 120 }, (_, i) => `line ${i}`).join("\n") + "\n```";
+    const content = `## Command Tree\n\nSome intro.\n\n${codeBlock}\n\nAfter text.`;
+
+    const { text, map } = protectCodeBlocks(content);
+    const lines = text.split("\n");
+
+    // Exactly one placeholder line must exist
+    const placeholderLines = lines.filter((l) => l.startsWith("__CODE_BLOCK_"));
+    expect(placeholderLines).toHaveLength(1);
+
+    // With no padding, the protected body must be MUCH shorter than the original.
+    // Original: heading + blank + intro + blank + 122-line code block + blank + "After text." = ~128 lines
+    // Protected: heading + blank + intro + blank + 1 placeholder + blank + "After text." = 7 lines
+    const originalLineCount = content.split("\n").length;
+    expect(lines.length).toBeLessThan(originalLineCount - 100);
+
+    // No raw code block content should remain in the protected text
+    expect(text).not.toContain("```text");
+    expect(text).not.toContain("line 0");
+    expect(map.size).toBe(1);
+  });
+
+  it("should keep 120-line code block in single chunk when maxChunkLines=100 (cli.md regression)", () => {
+    // Reproduces the exact failure scenario from cmd_328:
+    // ## Command Tree with 120-line code block, maxChunkLines=100
+    const codeBlock = "```text\n" + Array.from({ length: 118 }, (_, i) => `tree line ${i}`).join("\n") + "\n```";
+    const content = `## Command Tree\n\nIntroduction text.\n\n${codeBlock}`;
+
+    const { text: protectedBody } = protectCodeBlocks(content);
+    const chunks = splitIntoChunks(protectedBody, 100);
+
+    // Even though the original code block is 120 lines, the protected body
+    // compresses it to 1 line. The entire ## section stays as a single chunk.
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toContain("__CODE_BLOCK_0__");
+    expect(chunks[0]).toContain("## Command Tree");
+  });
+
+  it("should never split chunk boundary inside code block placeholder region", () => {
+    // Property-based style: many sections each containing a code block
+    // that previously caused padding-region splits.
+    for (const codeBlockLines of [10, 50, 120, 300]) {
+      const codeBlock =
+        "```typescript\n" +
+        Array.from({ length: codeBlockLines }, (_, i) => `const x${i} = ${i};`).join("\n") +
+        "\n```";
+
+      const sections = Array.from(
+        { length: 3 },
+        (_, i) => `## Section ${i}\n\nSome text here.\n\n${codeBlock}\n\nMore text.`
+      ).join("\n\n");
+
+      const { text: protectedBody } = protectCodeBlocks(sections);
+      const chunks = splitIntoChunks(protectedBody, 100);
+
+      // Each chunk that contains a placeholder must contain it fully (single line)
+      for (const chunk of chunks) {
+        const chunkLines = chunk.split("\n");
+        for (let i = 0; i < chunkLines.length; i++) {
+          if (chunkLines[i].startsWith("__CODE_BLOCK_")) {
+            // Placeholder is a single complete line — no empty-line padding should follow
+            // that belongs to a different "code block region"
+            // (After fix: the next non-empty line is real content, not padding)
+            const nextNonEmpty = chunkLines.slice(i + 1).find((l) => l.trim() !== "");
+            if (nextNonEmpty !== undefined) {
+              expect(nextNonEmpty).not.toMatch(/^__CODE_BLOCK_/);
+            }
+          }
+        }
+      }
+
+      // All placeholders must be present across all chunks (none dropped)
+      const allChunkText = chunks.join("\n");
+      const protectedLines = protectedBody.split("\n").filter((l) => l.startsWith("__CODE_BLOCK_"));
+      for (const ph of protectedLines) {
+        expect(allChunkText).toContain(ph);
+      }
+    }
+  });
+
+  it("should correctly restore large code block after chunk-split translate pipeline", async () => {
+    // Simulates the translateFile flow: protect → split → LLM (mock) → restore
+    // The mock echoes placeholders verbatim (perfect LLM behavior).
+    // Before the fix, chunks could contain only part of the padding region,
+    // causing some LLMs to drop the placeholder.
+    const codeBlockContent =
+      "```text\n" +
+      Array.from({ length: 120 }, (_, i) => `├── command ${i} <arg${i}>`).join("\n") +
+      "\n```";
+
+    const sections = [
+      "## Overview",
+      "",
+      Array.from({ length: 80 }, (_, i) => `Overview line ${i}`).join("\n"),
+      "",
+      "## Command Tree",
+      "",
+      codeBlockContent,
+      "",
+      "## Usage",
+      "",
+      Array.from({ length: 30 }, (_, i) => `Usage line ${i}`).join("\n"),
+    ].join("\n");
+
+    const tempDir2 = join(tmpdir(), `yuuhitsu-boundary-test-${Date.now()}`);
+    mkdirSync(tempDir2, { recursive: true });
+    const inputPath = join(tempDir2, "cli.md");
+    const outputPath = join(tempDir2, "cli.ja.md");
+    writeFileSync(inputPath, sections, "utf-8");
+
+    const mockChat = vi
+      .fn<any, Promise<ChatCompletionResponse>>()
+      .mockImplementation(async ({ messages }: any) => ({
+        content: messages.find((m: any) => m.role === "user").content,
+        usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
+      }));
+
+    await translateFile({
+      provider: { name: "mock", chat: mockChat },
+      inputPath,
+      outputPath,
+      targetLang: "ja",
+      maxChunkLines: 100,
+    });
+
+    const output = readFileSync(outputPath, "utf-8");
+
+    // The 120-line code block must appear intact in the output
+    expect(output).toContain("```text");
+    expect(output).toContain("├── command 0 <arg0>");
+    expect(output).toContain("├── command 119 <arg119>");
+    expect(output).toContain("```");
+
+    // No raw placeholder should leak into output
+    expect(output).not.toContain("__CODE_BLOCK_");
+
+    rmSync(tempDir2, { recursive: true, force: true });
+  });
+});
+
 describe("protectCodeBlocks robustness", () => {
   it("should handle many code blocks without stack overflow (ngsild.md pattern)", () => {
     // protectCodeBlocks imported at top level

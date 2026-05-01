@@ -76,12 +76,14 @@ export function protectCodeBlocks(content: string): CodeProtection {
       // Inside a code block — look for closing fence with same or more backticks
       blockLines.push(line);
       if (fenceMatch && fenceMatch[1].length >= fenceOpen.length && line.trim() === fenceMatch[1]) {
-        // Closing fence found
+        // Closing fence found — store as single-line placeholder (no padding).
+        // Padding was previously used to preserve line count, but it caused chunk
+        // boundaries to fall inside the placeholder's whitespace region, leading to
+        // non-deterministic LLM output when the code block exceeded --max-chunk-lines.
         const original = blockLines.join("\n") + "\n";
         const placeholder = `__CODE_BLOCK_${blockIndex++}__`;
         map.set(placeholder, original);
-        const newlineCount = blockLines.length; // lines inside block = newlines to preserve
-        resultLines.push(placeholder + "\n".repeat(newlineCount - 1));
+        resultLines.push(placeholder);
         fenceOpen = null;
         blockLines = [];
       }
