@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.13] - 2026-05-02
+
+### Changed
+- `DEFAULT_TEMPLATE`: Added mandatory code fence language identifier rule — every opening ` ``` ` must be followed by a language identifier; use ` ```text ` when unknown
+- `DEFAULT_TEMPLATE`: Added bash counter-example showing correct vs incorrect code fence usage
+- `buildGlossaryPrompt`: Added `do_not_use` entries as forbidden regardless of severity (block/warn/auto-fix)
+- `buildGlossaryPrompt`: Strengthened `severity=warn` wording to "actively avoid all do_not_use forms; treat warn terms as near-mandatory"
+- Note: These prompt-strengthening rules are not applied when using `--template-content` with a custom prompt.
+
+### Tests
+- NEW-1: fence lang 必須文言が DEFAULT_TEMPLATE に存在すること
+- NEW-2: warn 強化文言が buildGlossaryPrompt に存在すること
+- NEW-3: glossary 未設定時に warn 強化文言が出現しないこと
+
+Closes https://github.com/geolonia/yuuhitsu/issues/47
+
 ## [0.1.12] - 2026-05-01
 
 ### Fixed

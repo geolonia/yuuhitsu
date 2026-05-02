@@ -591,8 +591,9 @@ export function buildGlossaryPrompt(
     "Glossary usage rules:",
     "- Use the canonical translation for each term",
     "- Never use any do_not_use alternatives",
+    "- Treat the glossary's do_not_use entries as forbidden, regardless of severity (block / warn / auto-fix)",
     "- severity=block: strict brand requirement, zero exceptions",
-    "- severity=warn: strong preference, use canonical unless context requires otherwise",
+    "- severity=warn: actively avoid all do_not_use forms; use the canonical translation except when quoting source material verbatim. Treat warn terms as near-mandatory.",
     "- severity=auto-fix: preferred form, machine-replaceable",
   );
 

@@ -135,4 +135,58 @@ describe("Translate Task - Glossary Integration", () => {
     // Canonical translation for ja should appear
     expect(systemMsg.content).toContain("Webhook");
   });
+
+  // NEW-1: fence lang 必須文言が DEFAULT_TEMPLATE に存在すること
+  it("NEW-1: should include code fence lang requirement rule in default template", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.ja.md");
+    writeFileSync(inputPath, "# Test\n");
+
+    const mockProvider = createMockProvider("# テスト\n");
+    await translateFile({ provider: mockProvider, inputPath, outputPath, targetLang: "ja" });
+
+    const systemMsg = mockProvider.chat.mock.calls[0][0].messages.find(
+      (m: any) => m.role === "system",
+    );
+    expect(systemMsg.content).toContain("MUST be followed by a language identifier");
+    expect(systemMsg.content).toContain("never emit a bare opening");
+  });
+
+  // NEW-2: warn 強化文言が buildGlossaryPrompt に存在すること
+  it("NEW-2: should include strengthened warn rule when glossary is provided", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.ja.md");
+    writeFileSync(inputPath, "# Test\n");
+
+    const mockProvider = createMockProvider("# テスト\n");
+    await translateFile({
+      provider: mockProvider,
+      inputPath,
+      outputPath,
+      targetLang: "ja",
+      glossaryConfig: sampleGlossary,
+    });
+
+    const systemMsg = mockProvider.chat.mock.calls[0][0].messages.find(
+      (m: any) => m.role === "system",
+    );
+    expect(systemMsg.content).toContain("near-mandatory");
+    expect(systemMsg.content).toContain("regardless of severity");
+  });
+
+  // NEW-3: glossary 未設定時に warn 強化文言が出現しないこと
+  it("NEW-3: should not include warn strengthening text when glossaryConfig is undefined", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.ja.md");
+    writeFileSync(inputPath, "# Test\n");
+
+    const mockProvider = createMockProvider("# テスト\n");
+    await translateFile({ provider: mockProvider, inputPath, outputPath, targetLang: "ja" });
+
+    const systemMsg = mockProvider.chat.mock.calls[0][0].messages.find(
+      (m: any) => m.role === "system",
+    );
+    expect(systemMsg.content).not.toContain("near-mandatory");
+    expect(systemMsg.content).not.toContain("regardless of severity");
+  });
 });
