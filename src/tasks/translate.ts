@@ -149,6 +149,8 @@ Rules:
 - Do not translate frontmatter keys (only translate values where appropriate)
 - Maintain the same document structure
 - Produce natural, fluent text in the target language
+- Every opening \`\`\` you write MUST be followed by a language identifier on the same line (e.g., \`\`\`json, \`\`\`bash, \`\`\`typescript)
+- If the language is unknown, use \`\`\`text — never emit a bare opening \`\`\`
 
 CRITICAL - Link and URL preservation:
 - NEVER modify any URLs or link paths. Keep all href/src values exactly as-is.
@@ -162,7 +164,11 @@ Additional rules for Japanese translation:
 - Use full-width punctuation: 。、？！ (not .,?!)
 - Add half-width spaces around English words and numbers (e.g., "Vela とは", "NGSIv2 は", "3 つの")
 - Use natural Japanese terms for technical words where appropriate (e.g., "registration" → "登録", "subscription" → "サブスクリプション")
-- Keep product names, proper nouns, and abbreviations unchanged (e.g., Vela, FIWARE, NGSIv2, NGSI-LD, MCP)`;
+- Keep product names, proper nouns, and abbreviations unchanged (e.g., Vela, FIWARE, NGSIv2, NGSI-LD, MCP)
+
+Example — code fence with language identifier:
+  Bad:  \`\`\` echo hello \`\`\`
+  Good: \`\`\`bash echo hello \`\`\``;
 
 function buildPrompt(
   content: string,
