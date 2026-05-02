@@ -7,6 +7,7 @@
 - `DEFAULT_TEMPLATE`: Added bash counter-example showing correct vs incorrect code fence usage
 - `buildGlossaryPrompt`: Added `do_not_use` entries as forbidden regardless of severity (block/warn/auto-fix)
 - `buildGlossaryPrompt`: Strengthened `severity=warn` wording to "actively avoid all do_not_use forms; treat warn terms as near-mandatory"
+- Note: These prompt-strengthening rules are not applied when using `--template-content` with a custom prompt.
 
 ### Tests
 - NEW-1: fence lang 必須文言が DEFAULT_TEMPLATE に存在すること
