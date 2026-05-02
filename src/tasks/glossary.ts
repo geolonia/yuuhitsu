@@ -520,7 +520,13 @@ export function reviewGlossary(glossaryPath: string): ReviewReport {
         if (term.do_not_use && Object.keys(term.do_not_use).length > 0) {
           lines.push("- **Do not use:**");
           for (const [lang, words] of Object.entries(term.do_not_use)) {
-            lines.push(`  - \`${lang}\`: ${words.join(", ")}`);
+            const formatted = words.map((entry) => {
+              if (typeof entry === 'string') return entry;
+              return entry.except_after && entry.except_after.length > 0
+                ? `${entry.term} (except: ${entry.except_after.join(", ")})`
+                : entry.term;
+            });
+            lines.push(`  - \`${lang}\`: ${formatted.join(", ")}`);
           }
         }
         lines.push("");

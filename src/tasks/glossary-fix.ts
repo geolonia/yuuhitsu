@@ -64,6 +64,7 @@ export function fixGlossary(
     const forbidden = term.do_not_use?.[lang] ?? [];
     for (const entry of forbidden) {
       const forbiddenWord = typeof entry === 'string' ? entry : entry.term;
+      const exceptAfter = typeof entry === 'string' ? undefined : entry.except_after;
       if (forbiddenWord.length === 0) continue;
 
       // Count occurrences for reporting
@@ -71,6 +72,13 @@ export function fixGlossary(
       const replaced = result.replace(
         new RegExp(escapeRegex(forbiddenWord), "g"),
         (match, offset) => {
+          // Skip if except_after applies (same 16-char lookback logic as checkGlossary)
+          if (exceptAfter && exceptAfter.length > 0) {
+            const lookback = result.slice(Math.max(0, offset - 16), offset);
+            if (exceptAfter.some((ea) => lookback.includes(ea))) {
+              return match;
+            }
+          }
           // Skip if already part of a larger ASCII identifier
           const before = offset > 0 ? result[offset - 1] : "";
           const after = result[offset + match.length];
