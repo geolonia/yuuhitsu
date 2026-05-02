@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.14] - 2026-05-02
+
+### Added
+- `DoNotUseEntry` type: `string | { term: string; except_after?: string[] }` — backward-compatible Union type for `do_not_use` entries
+- `checkGlossary`: context_exception lookback — when a `do_not_use` entry is object form with `except_after`, the forbidden term is allowed if any of the listed words appear within 16 chars before the match (e.g., "MQTT ブローカー" is allowed when `except_after: ["MQTT"]`)
+- `buildGlossaryPrompt`: `except_after` attribute emitted in `<do_not_use>` XML (e.g., `<do_not_use except_after="MQTT, Message">ブローカー</do_not_use>`)
+- `buildGlossaryPrompt`: Added instruction line explaining `except_after` behavior to LLM
+- `fixGlossary`: updated to handle object-form `do_not_use` entries
+
+### Migration
+To use hybrid schema in `glossary.yaml`:
+```yaml
+do_not_use:
+  ja:
+    - "従来の禁止語"                          # string form (unchanged)
+    - term: "ブローカー"                       # object form (new)
+      except_after: ["MQTT", "Message"]
+```
+
+### Tests
+- NEW-1: string form (backward compat) triggers violation
+- NEW-2: object form + except_after match → allowed
+- NEW-3: object form + except_after mismatch → violation
+- NEW-4: lookback boundary (16 chars) inside/outside
+- NEW-5: buildGlossaryPrompt emits except_after in XML
+
+Closes https://github.com/geolonia/yuuhitsu/issues/50
+
 ## [0.1.13] - 2026-05-02
 
 ### Changed

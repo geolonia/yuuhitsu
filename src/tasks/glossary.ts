@@ -8,11 +8,13 @@ import { separateFrontmatter } from "./translate.js";
 
 export type GlossarySeverity = 'block' | 'warn' | 'auto-fix';
 
+export type DoNotUseEntry = string | { term: string; except_after?: string[] };
+
 export interface GlossaryTerm {
   canonical: string;
   type: string;
   translations: Record<string, string>;
-  do_not_use?: Record<string, string[]>;
+  do_not_use?: Record<string, DoNotUseEntry[]>;
   /** Severity level for violations. Defaults to 'warn' if omitted. */
   severity?: GlossarySeverity;
 }
@@ -194,7 +196,9 @@ export function checkGlossary(
     for (const term of glossary.terms) {
       const forbidden = term.do_not_use?.[lang] ?? [];
       const canonicalTranslation = term.translations[lang];
-      for (const forbiddenWord of forbidden) {
+      for (const entry of forbidden) {
+        const forbiddenWord = typeof entry === 'string' ? entry : entry.term;
+        const exceptAfter = typeof entry === 'string' ? undefined : entry.except_after;
         if (forbiddenWord.length === 0) continue;
         for (const { keyPath, value } of stringValues) {
           // Remove URL/URN content before checking to avoid false positives
@@ -202,7 +206,7 @@ export function checkGlossary(
             .replace(/https?:\/\/\S+/g, "")
             .replace(/\]\([^)]+\)/g, "")
             .replace(/urn:\S+/g, "");
-          if (hasUncoveredOccurrence(valueWithoutUrls, forbiddenWord, canonicalTranslation)) {
+          if (hasUncoveredOccurrence(valueWithoutUrls, forbiddenWord, canonicalTranslation, exceptAfter)) {
             issues.push({
               forbidden: forbiddenWord,
               canonical: term.canonical,
@@ -249,9 +253,11 @@ export function checkGlossary(
       for (const term of glossary.terms) {
         const forbidden = term.do_not_use?.[lang] ?? [];
         const canonicalTranslation = term.translations[lang];
-        for (const forbiddenWord of forbidden) {
+        for (const entry of forbidden) {
+          const forbiddenWord = typeof entry === 'string' ? entry : entry.term;
+          const exceptAfter = typeof entry === 'string' ? undefined : entry.except_after;
           if (forbiddenWord.length === 0) continue;
-          if (hasUncoveredOccurrence(lineClean, forbiddenWord, canonicalTranslation)) {
+          if (hasUncoveredOccurrence(lineClean, forbiddenWord, canonicalTranslation, exceptAfter)) {
             issues.push({
               forbidden: forbiddenWord,
               canonical: term.canonical,
@@ -385,19 +391,28 @@ function isPartOfLargerIdentifier(
 
 /**
  * Returns true if `line` contains at least one occurrence of `forbiddenWord`
- * that is NOT covered by `canonicalTranslation` appearing at the same position
- * and is NOT part of a larger technical identifier.
+ * that is NOT covered by `canonicalTranslation` appearing at the same position,
+ * is NOT part of a larger technical identifier, and is NOT preceded within
+ * 16 chars by any of the `exceptAfter` strings.
  */
 function hasUncoveredOccurrence(
   line: string,
   forbiddenWord: string,
-  canonicalTranslation: string | undefined
+  canonicalTranslation: string | undefined,
+  exceptAfter?: string[]
 ): boolean {
   if (forbiddenWord.length === 0) return false;
   let searchPos = 0;
   while (true) {
     const idx = line.indexOf(forbiddenWord, searchPos);
     if (idx === -1) break;
+    if (exceptAfter && exceptAfter.length > 0) {
+      const lookback = line.slice(Math.max(0, idx - 16), idx);
+      if (exceptAfter.some((ea) => lookback.includes(ea))) {
+        searchPos = idx + 1;
+        continue;
+      }
+    }
     if (
       !isOccurrenceCoveredByCanonical(line, idx, forbiddenWord, canonicalTranslation) &&
       !isPartOfLargerIdentifier(line, idx, forbiddenWord.length)
@@ -572,7 +587,15 @@ export function buildGlossaryPrompt(
     const forbidden = term.do_not_use?.[targetLang] ?? [];
     const severity = term.severity ?? 'warn';
     const forbiddenXml = forbidden.length > 0
-      ? forbidden.map((f) => `    <do_not_use>${escapeXml(f)}</do_not_use>`).join("\n")
+      ? forbidden.map((f) => {
+          if (typeof f === 'string') {
+            return `    <do_not_use>${escapeXml(f)}</do_not_use>`;
+          }
+          const exceptAttr = f.except_after && f.except_after.length > 0
+            ? ` except_after="${escapeXml(f.except_after.join(', '))}"`
+            : '';
+          return `    <do_not_use${exceptAttr}>${escapeXml(f.term)}</do_not_use>`;
+        }).join("\n")
       : "";
     const termEntry = [
       `  <term canonical="${escapeXml(canonical)}" severity="${severity}">`,
@@ -595,6 +618,7 @@ export function buildGlossaryPrompt(
     "- severity=block: strict brand requirement, zero exceptions",
     "- severity=warn: actively avoid all do_not_use forms; use the canonical translation except when quoting source material verbatim. Treat warn terms as near-mandatory.",
     "- severity=auto-fix: preferred form, machine-replaceable",
+    "- If a do_not_use entry has except_after, the term is allowed when preceded (within ~16 chars) by one of those words (e.g., 'MQTT broker' allows 'ブローカー' after 'MQTT'). Otherwise it is forbidden.",
   );
 
   // Few-shot examples: take up to 3 terms that have do_not_use entries and a non-empty translation
@@ -614,11 +638,15 @@ export function buildGlossaryPrompt(
     for (const term of exampleTerms) {
       const canonical = renderedTermCanonical(term);
       const forbidden = term.do_not_use?.[targetLang] ?? [];
-      const firstForbidden = forbidden.find((f) => typeof f === "string" && f.trim().length > 0);
-      if (!firstForbidden) continue;
+      const firstEntry = forbidden.find((f) => {
+        const word = typeof f === 'string' ? f : f.term;
+        return word.trim().length > 0;
+      });
+      if (!firstEntry) continue;
+      const firstForbiddenWord = typeof firstEntry === 'string' ? firstEntry : firstEntry.term;
       parts.push(
         `<example>`,
-        `  <input>...${escapeXml(firstForbidden)}...</input>`,
+        `  <input>...${escapeXml(firstForbiddenWord)}...</input>`,
         `  <output>...${escapeXml(canonical)}...</output>`,
         `</example>`,
       );

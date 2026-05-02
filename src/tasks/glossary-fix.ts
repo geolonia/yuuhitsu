@@ -62,7 +62,8 @@ export function fixGlossary(
     if (!canonicalTranslation) continue;
 
     const forbidden = term.do_not_use?.[lang] ?? [];
-    for (const forbiddenWord of forbidden) {
+    for (const entry of forbidden) {
+      const forbiddenWord = typeof entry === 'string' ? entry : entry.term;
       if (forbiddenWord.length === 0) continue;
 
       // Count occurrences for reporting
