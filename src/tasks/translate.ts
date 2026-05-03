@@ -144,14 +144,14 @@ export function protectBlockBoundaries(content: string): string {
 
   for (const line of lines) {
     const isStructural =
-      /^\s*[-*+]\s/.test(line) ||          // unordered list
-      /^\s*\d+\.\s/.test(line) ||           // ordered list
-      /^#{1,6}\s/.test(line) ||             // heading
-      /^-{3,}$/.test(line) ||               // hr (dash)
-      /^\*{3,}$/.test(line) ||              // hr (asterisk)
-      /^_{3,}$/.test(line) ||               // hr (underscore)
-      /^\s*`{3,}/.test(line) ||             // fenced code (backtick)
-      /^\s*~{3,}/.test(line) ||             // fenced code (tilde)
+      /^\s*[-*+]\s/.test(line) ||              // unordered list
+      /^\s*\d+\.\s/.test(line) ||               // ordered list
+      /^ {0,3}#{1,6}\s/.test(line) ||           // heading (CommonMark: 0-3 leading spaces)
+      /^ {0,3}-{3,}\s*$/.test(line) ||          // hr (dash, 0-3 leading spaces)
+      /^ {0,3}\*{3,}\s*$/.test(line) ||         // hr (asterisk, 0-3 leading spaces)
+      /^ {0,3}_{3,}\s*$/.test(line) ||           // hr (underscore, 0-3 leading spaces)
+      /^\s*`{3,}/.test(line) ||                 // fenced code (backtick)
+      /^\s*~{3,}/.test(line) ||                 // fenced code (tilde)
       /^__CODE_BLOCK_\d+__$/.test(line.trim()); // code block placeholder (after protectCodeBlocks)
 
     if (isStructural) {
