@@ -122,27 +122,37 @@ export function restoreCodeBlocks(content: string, map: Map<string, string>): st
 }
 
 export const BLOCK_BOUNDARY_SENTINEL = "%%BB%%";
+// Temporary escape for pre-existing %%BB%% literals in user content.
+// Uses a character sequence unlikely to appear in markdown documents.
+const ESCAPED_SENTINEL = "\x01BB\x01";
 
 /**
  * Insert block boundary sentinels before structural Markdown elements
- * (list items, headings, horizontal rules, code fences).
+ * (list items, headings, horizontal rules, code fences, code block placeholders).
  * P-A4: prevents newline collapse around structural boundaries during LLM translation.
- * Runs after protectCodeBlocks so fenced blocks are already replaced by placeholders.
+ * When called after protectCodeBlocks, fenced blocks appear as __CODE_BLOCK_N__ placeholders;
+ * the function treats those placeholders as structural to protect fence-adjacent newlines.
  */
 export function protectBlockBoundaries(content: string): string {
-  const lines = content.split("\n");
+  // Escape any pre-existing %%BB%% so they are not confused with control sentinels
+  const escaped = content.includes(BLOCK_BOUNDARY_SENTINEL)
+    ? content.split(BLOCK_BOUNDARY_SENTINEL).join(ESCAPED_SENTINEL)
+    : content;
+
+  const lines = escaped.split("\n");
   const result: string[] = [];
 
   for (const line of lines) {
     const isStructural =
-      /^\s*[-*+]\s/.test(line) ||   // unordered list
-      /^\s*\d+\.\s/.test(line) ||    // ordered list
-      /^#{1,6}\s/.test(line) ||      // heading
-      /^-{3,}$/.test(line) ||        // hr (dash)
-      /^\*{3,}$/.test(line) ||       // hr (asterisk)
-      /^_{3,}$/.test(line) ||        // hr (underscore)
-      /^\s*`{3,}/.test(line) ||      // fenced code (backtick)
-      /^\s*~{3,}/.test(line);        // fenced code (tilde)
+      /^\s*[-*+]\s/.test(line) ||          // unordered list
+      /^\s*\d+\.\s/.test(line) ||           // ordered list
+      /^#{1,6}\s/.test(line) ||             // heading
+      /^-{3,}$/.test(line) ||               // hr (dash)
+      /^\*{3,}$/.test(line) ||              // hr (asterisk)
+      /^_{3,}$/.test(line) ||               // hr (underscore)
+      /^\s*`{3,}/.test(line) ||             // fenced code (backtick)
+      /^\s*~{3,}/.test(line) ||             // fenced code (tilde)
+      /^__CODE_BLOCK_\d+__$/.test(line.trim()); // code block placeholder (after protectCodeBlocks)
 
     if (isStructural) {
       result.push(BLOCK_BOUNDARY_SENTINEL);
@@ -158,7 +168,12 @@ export function protectBlockBoundaries(content: string): string {
  * Handles both clean (sentinel on own line) and collapsed (sentinel inline) cases.
  */
 export function restoreBlockBoundaries(content: string): string {
-  if (!content.includes(BLOCK_BOUNDARY_SENTINEL)) return content;
+  if (!content.includes(BLOCK_BOUNDARY_SENTINEL)) {
+    // Still unescape any escaped sentinels from original content
+    return content.includes(ESCAPED_SENTINEL)
+      ? content.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL)
+      : content;
+  }
 
   const parts = content.split(BLOCK_BOUNDARY_SENTINEL);
   let restored = parts[0];
@@ -172,6 +187,11 @@ export function restoreBlockBoundaries(content: string): string {
       // Ensure restored ends with exactly one newline before appending next part
       restored = restored.replace(/\n?$/, "\n") + stripped;
     }
+  }
+
+  // Unescape any pre-existing %%BB%% that were escaped before protection
+  if (restored.includes(ESCAPED_SENTINEL)) {
+    restored = restored.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL);
   }
 
   return restored;
@@ -491,8 +511,9 @@ export async function translateFile(
     totalUsage.totalTokens += response.usage.totalTokens;
   }
 
-  // Restore block boundaries (sentinels → newlines) then restore code block placeholders
-  const translatedBodyWithSentinels = translatedParts.join("");
+  // Restore block boundaries (sentinels → newlines) then restore code block placeholders.
+  // join("\n") ensures chunk boundaries always have a separator even if LLM drops trailing newlines.
+  const translatedBodyWithSentinels = translatedParts.join("\n");
   const translatedBodyWithPlaceholders = restoreBlockBoundaries(translatedBodyWithSentinels);
   const translatedBody = restoreCodeBlocks(translatedBodyWithPlaceholders, codeMap);
 

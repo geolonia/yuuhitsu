@@ -49,6 +49,40 @@ describe("protectBlockBoundaries", () => {
     const result = protectBlockBoundaries(input);
     expect(result).toBe(`${BB}\n# Title\n\nSome text.`);
   });
+
+  it("inserts sentinel before __CODE_BLOCK_N__ placeholders (fence-adjacent protection)", () => {
+    const input = "- **macOS**: `~/path`\n\n__CODE_BLOCK_0__";
+    const result = protectBlockBoundaries(input);
+    expect(result).toContain(`${BB}\n__CODE_BLOCK_0__`);
+  });
+
+  it("inserts sentinel before hr (asterisk ***) and hr (underscore ___)", () => {
+    const input = "text\n***\n___\nend";
+    const result = protectBlockBoundaries(input);
+    expect(result).toBe(`text\n${BB}\n***\n${BB}\n___\nend`);
+  });
+
+  it("inserts sentinel before tilde fenced code blocks", () => {
+    const input = "text\n~~~yaml\nkey: value\n~~~\nend";
+    const result = protectBlockBoundaries(input);
+    expect(result).toContain(`${BB}\n~~~yaml`);
+  });
+
+  it("inserts sentinel before indented list items", () => {
+    const input = "- parent\n  - child";
+    const result = protectBlockBoundaries(input);
+    expect(result).toBe(`${BB}\n- parent\n${BB}\n  - child`);
+  });
+
+  it("escapes pre-existing %%BB%% in user content before inserting sentinels", () => {
+    const input = `Some text with ${BB} literal\n- list item`;
+    const result = protectBlockBoundaries(input);
+    // Pre-existing %%BB%% must not be treated as a sentinel
+    expect(result.split(BB).length).toBe(2); // only one sentinel (before list item)
+    // Original %%BB%% is escaped and restorable
+    const roundTrip = restoreBlockBoundaries(result);
+    expect(roundTrip).toBe(input);
+  });
 });
 
 describe("restoreBlockBoundaries", () => {
