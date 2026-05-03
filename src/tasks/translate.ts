@@ -121,6 +121,62 @@ export function restoreCodeBlocks(content: string, map: Map<string, string>): st
   return result;
 }
 
+export const BLOCK_BOUNDARY_SENTINEL = "%%BB%%";
+
+/**
+ * Insert block boundary sentinels before structural Markdown elements
+ * (list items, headings, horizontal rules, code fences).
+ * P-A4: prevents newline collapse around structural boundaries during LLM translation.
+ * Runs after protectCodeBlocks so fenced blocks are already replaced by placeholders.
+ */
+export function protectBlockBoundaries(content: string): string {
+  const lines = content.split("\n");
+  const result: string[] = [];
+
+  for (const line of lines) {
+    const isStructural =
+      /^\s*[-*+]\s/.test(line) ||   // unordered list
+      /^\s*\d+\.\s/.test(line) ||    // ordered list
+      /^#{1,6}\s/.test(line) ||      // heading
+      /^-{3,}$/.test(line) ||        // hr (dash)
+      /^\*{3,}$/.test(line) ||       // hr (asterisk)
+      /^_{3,}$/.test(line) ||        // hr (underscore)
+      /^\s*`{3,}/.test(line) ||      // fenced code (backtick)
+      /^\s*~{3,}/.test(line);        // fenced code (tilde)
+
+    if (isStructural) {
+      result.push(BLOCK_BOUNDARY_SENTINEL);
+    }
+    result.push(line);
+  }
+
+  return result.join("\n");
+}
+
+/**
+ * Remove block boundary sentinels and restore newlines lost during LLM translation.
+ * Handles both clean (sentinel on own line) and collapsed (sentinel inline) cases.
+ */
+export function restoreBlockBoundaries(content: string): string {
+  if (!content.includes(BLOCK_BOUNDARY_SENTINEL)) return content;
+
+  const parts = content.split(BLOCK_BOUNDARY_SENTINEL);
+  let restored = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    // Strip a leading newline from next part (present when LLM preserved sentinel on its own line)
+    const stripped = parts[i].replace(/^\n/, "");
+    if (restored.length === 0) {
+      // Sentinel was at the very start of content — no preceding text to separate from
+      restored = stripped;
+    } else {
+      // Ensure restored ends with exactly one newline before appending next part
+      restored = restored.replace(/\n?$/, "\n") + stripped;
+    }
+  }
+
+  return restored;
+}
+
 export interface TranslateOptions {
   provider: AIProvider;
   inputPath: string;
@@ -174,6 +230,7 @@ function buildPrompt(
   content: string,
   targetLang: string,
   hasPlaceholders: boolean,
+  hasSentinels: boolean,
   templateContent?: string,
   glossaryConfig?: GlossaryConfig
 ): ChatMessage[] {
@@ -187,6 +244,33 @@ function buildPrompt(
     if (glossarySection) {
       systemPrompt += glossarySection;
     }
+  }
+
+  if (hasSentinels) {
+    systemPrompt +=
+      "\n\n## Block boundary markers (P-A4)\n" +
+      "Lines containing the marker `%%BB%%` are **block boundary markers** inserted by the\n" +
+      "translation pipeline to preserve newlines around structural elements.\n\n" +
+      "Rules for `%%BB%%` markers:\n" +
+      "- Output every `%%BB%%` marker **verbatim and unchanged** in your translation.\n" +
+      "- Each marker must remain on its own line, in the same position relative to surrounding content.\n" +
+      "- Do not translate, remove, paraphrase, or modify these markers.\n" +
+      "- Do not add new `%%BB%%` markers; only preserve existing ones.\n\n" +
+      "Example:\n" +
+      "  Input:\n" +
+      "    %%BB%%\n" +
+      "    - List item one\n" +
+      "    %%BB%%\n" +
+      "    - List item two\n" +
+      "    %%BB%%\n" +
+      "    ## Section heading\n" +
+      "  Output:\n" +
+      "    %%BB%%\n" +
+      "    - リスト項目その一\n" +
+      "    %%BB%%\n" +
+      "    - リスト項目その二\n" +
+      "    %%BB%%\n" +
+      "    ## セクション見出し";
   }
 
   if (hasPlaceholders) {
@@ -385,13 +469,17 @@ export async function translateFile(
   const { text: protectedBody, map: codeMap } = protectCodeBlocks(body);
   const hasPlaceholders = codeMap.size > 0;
 
+  // Protect block boundaries: insert %%BB%% sentinels before structural elements (P-A4)
+  const bodyWithSentinels = protectBlockBoundaries(protectedBody);
+  const hasSentinels = bodyWithSentinels.includes(BLOCK_BOUNDARY_SENTINEL);
+
   // Split body into chunks if needed (frontmatter is never sent to LLM)
-  const chunks = splitIntoChunks(protectedBody, maxChunkLines);
+  const chunks = splitIntoChunks(bodyWithSentinels, maxChunkLines);
   const translatedParts: string[] = [];
   let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   for (const chunk of chunks) {
-    const messages = buildPrompt(chunk, targetLang, hasPlaceholders, templateContent, glossaryConfig);
+    const messages = buildPrompt(chunk, targetLang, hasPlaceholders, hasSentinels, templateContent, glossaryConfig);
     const response = await provider.chat({
       model: "",
       messages,
@@ -403,8 +491,9 @@ export async function translateFile(
     totalUsage.totalTokens += response.usage.totalTokens;
   }
 
-  // Restore code blocks from placeholders
-  const translatedBodyWithPlaceholders = translatedParts.join("");
+  // Restore block boundaries (sentinels → newlines) then restore code block placeholders
+  const translatedBodyWithSentinels = translatedParts.join("");
+  const translatedBodyWithPlaceholders = restoreBlockBoundaries(translatedBodyWithSentinels);
   const translatedBody = restoreCodeBlocks(translatedBodyWithPlaceholders, codeMap);
 
   // Recombine frontmatter with translated body
