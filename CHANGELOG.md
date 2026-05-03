@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.15] - 2026-05-04
+
+### Added
+- `protectBlockBoundaries` / `restoreBlockBoundaries`: P-A4 newline sentinel (`%%BB%%`) — inserts block boundary markers before list items, headings, horizontal rules, and code fences prior to LLM translation, then restores newlines after translation. Eliminates newline collapse at structural boundaries (root cause of PR#155/161/166 broken output patterns).
+- `BLOCK_BOUNDARY_SENTINEL` exported constant (`"%%BB%%"`)
+- `buildPrompt`: sentinel preservation instruction (+120 tokens) with few-shot example automatically added when sentinels are present — instructs LLM to output `%%BB%%` markers verbatim
+- default-on behavior (no flag required); transparent to existing users
+
+### Implementation
+- `src/tasks/translate.ts`: `protectBlockBoundaries` runs after `protectCodeBlocks`; `restoreBlockBoundaries` runs before `restoreCodeBlocks`
+- Sentinel strategy: insert `%%BB%%` on its own line before each structural element; restore by splitting on sentinel and normalizing newlines (handles both clean and collapsed LLM output)
+- Residual sentinel warning: `console.warn` when `%%BB%%` remains in output (LLM moved/duplicated markers)
+
+### Tests (23 new)
+- `translate-block-boundaries.test.ts`: 7 `protectBlockBoundaries` unit tests, 9 `restoreBlockBoundaries` unit tests, 5 full round-trip fixture tests (PR#155 list-list, PR#166 3-item list, PR#161 macOS/Windows+fence, PR#155 hr+heading, PR#161 heading+body)
+
+### Migration
+Phase 2 (cmd_385): geonicdb-docs `yuuhitsu` bump `0.1.14 → 0.1.15` + 1-week monitoring
+Phase 3 (cmd_386): `fix-doc-quality.ts` 4-function deletion (`fixEmbeddedFences`, `fixListMerge`, `fixHeadingMerge`, `fixHorizontalRuleMerge`) — ~700 LOC → ~250 LOC (60% reduction)
+
+Closes https://github.com/geolonia/yuuhitsu/issues/53
+
 ## [0.1.14] - 2026-05-02
 
 ### Added
