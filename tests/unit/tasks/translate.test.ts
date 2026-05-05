@@ -837,5 +837,53 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
       expect(output).toContain("翻訳テキスト 100。"); // batch 2
       expect(output).toContain("翻訳テキスト 249。"); // batch 3
     });
+
+    it("should throw when maxNodesPerBatch=0 (would cause infinite loop)", async () => {
+      const inputPath = join(tempDir, "invalid0.md");
+      writeFileSync(inputPath, "# Hello\n\nTest.\n");
+      const mockProvider = createMockProvider();
+
+      await expect(
+        translateFile({
+          provider: mockProvider,
+          inputPath,
+          outputPath: join(tempDir, "out.md"),
+          targetLang: "ja",
+          maxNodesPerBatch: 0,
+        })
+      ).rejects.toThrow(/maxNodesPerBatch must be a positive integer/);
+    });
+
+    it("should throw when maxNodesPerBatch is negative", async () => {
+      const inputPath = join(tempDir, "invalid-neg.md");
+      writeFileSync(inputPath, "# Hello\n\nTest.\n");
+      const mockProvider = createMockProvider();
+
+      await expect(
+        translateFile({
+          provider: mockProvider,
+          inputPath,
+          outputPath: join(tempDir, "out.md"),
+          targetLang: "ja",
+          maxNodesPerBatch: -1,
+        })
+      ).rejects.toThrow(/maxNodesPerBatch must be a positive integer/);
+    });
+
+    it("should throw when maxNodesPerBatch is NaN (parseInt of invalid CLI input)", async () => {
+      const inputPath = join(tempDir, "invalid-nan.md");
+      writeFileSync(inputPath, "# Hello\n\nTest.\n");
+      const mockProvider = createMockProvider();
+
+      await expect(
+        translateFile({
+          provider: mockProvider,
+          inputPath,
+          outputPath: join(tempDir, "out.md"),
+          targetLang: "ja",
+          maxNodesPerBatch: NaN,
+        })
+      ).rejects.toThrow(/maxNodesPerBatch must be a positive integer/);
+    });
   });
 });

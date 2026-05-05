@@ -55,6 +55,7 @@ export const translateCommand = new Command("translate")
           outputDir: opts.outputDir,
           dryRun,
           verbose,
+          maxNodesPerBatch: opts.maxNodesPerBatch,
         });
       } else {
         // Single file translation mode (original behavior)

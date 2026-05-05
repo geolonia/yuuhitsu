@@ -568,6 +568,9 @@ export async function translateFile(
     maxChunkLines,
     maxNodesPerBatch,
   } = options;
+  if (maxNodesPerBatch !== undefined && (!Number.isInteger(maxNodesPerBatch) || maxNodesPerBatch < 1)) {
+    throw new Error(`maxNodesPerBatch must be a positive integer, got: ${maxNodesPerBatch}`);
+  }
   const resolvedMaxNodes = maxNodesPerBatch ?? DEFAULT_MAX_NODES_PER_BATCH;
 
   let content: string;

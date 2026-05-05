@@ -155,5 +155,17 @@ describe("batch-translate task", () => {
 
       expect(opts.onProgress).toBe(callback);
     });
+
+    it("should accept maxNodesPerBatch option and propagate to TranslateOptions", () => {
+      const opts: BatchTranslateOptions = {
+        pattern: "docs/**/*.md",
+        targetLang: "ja",
+        provider: {} as any,
+        dryRun: false,
+        maxNodesPerBatch: 150,
+      };
+
+      expect(opts.maxNodesPerBatch).toBe(150);
+    });
   });
 });
