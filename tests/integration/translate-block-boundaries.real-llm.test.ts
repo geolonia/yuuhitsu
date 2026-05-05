@@ -9,18 +9,20 @@ import { translateFile } from "../../src/tasks/translate.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = join(__dirname, "fixtures");
 
-const API_KEY = process.env.ANTHROPIC_API_KEY;
-
-// Graceful skip when no API key is available (e.g. local dev without credentials)
-const describeTest = API_KEY ? describe : describe.skip;
-
-describeTest(
+describe(
   "P-A4 <!--BB--> sentinel: real LLM integration (Claude Sonnet 4.6)",
   () => {
     let tempDir: string;
     let provider: ClaudeProvider;
 
     beforeAll(() => {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        throw new Error(
+          "ANTHROPIC_API_KEY is required for integration tests. " +
+          "Set it before running 'npm run test:integration'. " +
+          "See tests/INTEGRATION_TESTS.md for details."
+        );
+      }
       tempDir = join(tmpdir(), `yuuhitsu-sentinel-integration-${Date.now()}`);
       mkdirSync(tempDir, { recursive: true });
       provider = new ClaudeProvider("claude-sonnet-4-6");

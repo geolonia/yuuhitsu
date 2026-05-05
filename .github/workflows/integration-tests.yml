@@ -25,7 +25,6 @@ jobs:
           node-version: "20"
       - run: npm ci
       - name: Run integration tests
-        if: ${{ env.ANTHROPIC_API_KEY != '' }}
         run: npm run test:integration
       - name: Upload test results
         if: always()
