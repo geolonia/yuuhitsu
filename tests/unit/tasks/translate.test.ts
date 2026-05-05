@@ -452,3 +452,263 @@ describe("Translate Task", () => {
     });
   });
 });
+
+// ─── Structured Output (tool_use) path ───────────────────────────────────────
+
+/**
+ * Create a mock provider with translateStructured (Claude-like structured output).
+ * textMap: { [inputText]: translatedText } — maps source text to translation.
+ */
+function createStructuredMockProvider(textMap: Record<string, string> = {}) {
+  return {
+    chat: vi.fn(),
+    chatStream: vi.fn(),
+    translateStructured: vi.fn().mockImplementation(
+      async (request: { segments: Array<{ id: number; text: string }> }) => {
+        const translations = request.segments.map((s) => ({
+          id: s.id,
+          text: textMap[s.text] ?? s.text,
+        }));
+        return {
+          translations,
+          usage: { promptTokens: 50, completionTokens: 100, totalTokens: 150 },
+        };
+      }
+    ),
+  };
+}
+
+describe("Translate Task — Structured Output (tool_use) path", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = join(tmpdir(), `yuuhitsu-structured-test-${Date.now()}`);
+    mkdirSync(tempDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("should call translateStructured instead of chat when provider supports it", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# Hello\n\nWorld\n");
+
+    const mockProvider = createStructuredMockProvider({
+      Hello: "こんにちは",
+      World: "世界",
+    });
+
+    await translateFile({
+      provider: mockProvider,
+      inputPath,
+      outputPath,
+      targetLang: "ja",
+    });
+
+    expect(mockProvider.translateStructured).toHaveBeenCalled();
+    expect(mockProvider.chat).not.toHaveBeenCalled();
+  });
+
+  it("should translate text correctly via structured output path", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# Hello World\n\nThis is a test document.\n");
+
+    const mockProvider = createStructuredMockProvider({
+      "Hello World": "こんにちは世界",
+      "This is a test document.": "これはテスト文書です。",
+    });
+
+    await translateFile({
+      provider: mockProvider,
+      inputPath,
+      outputPath,
+      targetLang: "ja",
+    });
+
+    const result = readFileSync(outputPath, "utf-8");
+    expect(result).toContain("こんにちは世界");
+    expect(result).toContain("これはテスト文書です。");
+  });
+
+  it("should pass systemPrompt (no JSON format section) to translateStructured", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# Test\n");
+
+    const mockProvider = createStructuredMockProvider();
+
+    await translateFile({
+      provider: mockProvider,
+      inputPath,
+      outputPath,
+      targetLang: "ja",
+    });
+
+    const callArg = mockProvider.translateStructured.mock.calls[0][0];
+    expect(callArg.systemPrompt).toBeDefined();
+    expect(callArg.systemPrompt).toMatch(/translat/i);
+    // Structured prompt must NOT include the JSON format instructions (no need with tool_use)
+    expect(callArg.systemPrompt).not.toMatch(/Return ONLY a valid JSON/);
+    expect(callArg.systemPrompt).not.toMatch(/## Translation format/);
+  });
+
+  it("should pass segments with correct ids to translateStructured", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# Title\n\nParagraph one.\n\nParagraph two.\n");
+
+    const mockProvider = createStructuredMockProvider();
+
+    await translateFile({
+      provider: mockProvider,
+      inputPath,
+      outputPath,
+      targetLang: "ja",
+    });
+
+    const callArg = mockProvider.translateStructured.mock.calls[0][0];
+    const segments: Array<{ id: number; text: string }> = callArg.segments;
+    expect(segments.length).toBeGreaterThan(0);
+    // IDs should be sequential integers
+    const ids = segments.map((s) => s.id);
+    expect(ids).toEqual([...Array(ids.length).keys()]);
+  });
+
+  it("should throw if translateStructured returns missing IDs (partial response)", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# A\n\nB\n\nC\n");
+
+    const partialProvider = {
+      chat: vi.fn(),
+      chatStream: vi.fn(),
+      translateStructured: vi.fn().mockResolvedValue({
+        // Only returns first segment, missing the rest
+        translations: [{ id: 0, text: "翻訳A" }],
+        usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
+      }),
+    };
+
+    await expect(
+      translateFile({
+        provider: partialProvider,
+        inputPath,
+        outputPath,
+        targetLang: "ja",
+      })
+    ).rejects.toThrow(/partial translation/);
+  });
+
+  it("should NOT send code block content via translateStructured", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(
+      inputPath,
+      "# Heading\n\nSome text.\n\n```typescript\nconst x = 'hello';\n```\n\nMore text.\n"
+    );
+
+    const mockProvider = createStructuredMockProvider();
+
+    await translateFile({
+      provider: mockProvider,
+      inputPath,
+      outputPath,
+      targetLang: "ja",
+    });
+
+    const callArg = mockProvider.translateStructured.mock.calls[0][0];
+    const texts = callArg.segments.map((s: { text: string }) => s.text);
+    expect(texts.join(" ")).not.toContain("const x = 'hello'");
+    expect(texts.join(" ")).not.toContain("typescript");
+  });
+
+  it("should preserve code blocks in output when using structured output path", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    const codeBlock = "```typescript\nconst x = 'hello';\n```";
+    writeFileSync(inputPath, `# Title\n\n${codeBlock}\n`);
+
+    const mockProvider = createStructuredMockProvider({ Title: "タイトル" });
+
+    await translateFile({
+      provider: mockProvider,
+      inputPath,
+      outputPath,
+      targetLang: "ja",
+    });
+
+    const result = readFileSync(outputPath, "utf-8");
+    expect(result).toContain("const x = 'hello'");
+    expect(result).toContain("typescript");
+    expect(result).toContain("タイトル");
+  });
+
+  it("should throw on duplicate IDs in response (structured path)", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# A\n\nB\n");
+
+    const duplicateProvider = {
+      chat: vi.fn(),
+      chatStream: vi.fn(),
+      translateStructured: vi.fn().mockResolvedValue({
+        // id 0 appears twice — duplicate
+        translations: [
+          { id: 0, text: "翻訳A" },
+          { id: 0, text: "重複A" },
+        ],
+        usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
+      }),
+    };
+
+    await expect(
+      translateFile({ provider: duplicateProvider, inputPath, outputPath, targetLang: "ja" })
+    ).rejects.toThrow(/duplicate IDs/);
+  });
+
+  it("should throw on unexpected IDs in response (structured path)", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# A\n");
+
+    const unexpectedProvider = {
+      chat: vi.fn(),
+      chatStream: vi.fn(),
+      translateStructured: vi.fn().mockResolvedValue({
+        // id 999 was never in the input
+        translations: [
+          { id: 0, text: "翻訳A" },
+          { id: 999, text: "幽霊" },
+        ],
+        usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
+      }),
+    };
+
+    await expect(
+      translateFile({ provider: unexpectedProvider, inputPath, outputPath, targetLang: "ja" })
+    ).rejects.toThrow(/unexpected IDs/);
+  });
+
+  it("should throw on malformed payload — id is string instead of number (structured path)", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# A\n");
+
+    const malformedProvider = {
+      chat: vi.fn(),
+      chatStream: vi.fn(),
+      translateStructured: vi.fn().mockResolvedValue({
+        // id is a string — invalid payload
+        translations: [{ id: "0", text: "翻訳A" }],
+        usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
+      }),
+    };
+
+    await expect(
+      translateFile({ provider: malformedProvider, inputPath, outputPath, targetLang: "ja" })
+    ).rejects.toThrow(/invalid translation payload/);
+  });
+});
