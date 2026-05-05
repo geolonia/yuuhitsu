@@ -225,12 +225,20 @@ describe("restoreBlockBoundaries Layer 3 list-aware fallback (P-A4 v3)", () => {
     expect(restoreBlockBoundaries(item)).toBe(item);
   });
 
+  it("does not falsely split placeholder followed by lowercase-word hyphen (false positive guard)", () => {
+    // e.g. "- Use `code`-style formatting" → after protect: "- Use __INLINE_CODE_0__-style"
+    // (?=[^a-z]) guard: 's' is [a-z] → no split
+    const item = "- Use __INLINE_CODE_0__-style formatting";
+    expect(restoreBlockBoundaries(item)).toBe(item);
+  });
+
   it("splits placeholder-end no-space collapse (- item: __INLINE_CODE_0__-次の項目)", () => {
     // Simulates LLM collapsing "- item: __INLINE_CODE_0__\n- 次の項目: __INLINE_CODE_1__"
-    // into one line without space (common in Japanese translation)
+    // into one line without space (common in Japanese translation).
+    // Replacement inserts space after marker so "/^\s*[-*+]\s/" matches the new line.
     const collapsed = "- item: __INLINE_CODE_0__-次の項目: __INLINE_CODE_1__";
     const restored = restoreBlockBoundaries(collapsed);
-    expect(restored).toBe("- item: __INLINE_CODE_0__\n-次の項目: __INLINE_CODE_1__");
+    expect(restored).toBe("- item: __INLINE_CODE_0__\n- 次の項目: __INLINE_CODE_1__");
   });
 
   it("splits placeholder-only list collapse (__INLINE_CODE_0__-__INLINE_CODE_1__-__INLINE_CODE_2__)", () => {

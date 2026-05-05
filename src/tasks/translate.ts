@@ -245,11 +245,13 @@ export function restoreBlockBoundaries(content: string): string {
   //       LLM produces when translating to Japanese (Japanese text has no space after marker).
   const LIST_INLINE_MERGE_UNORDERED = /(^\s*[-*+]\s[^\n]*?)([-*+]\s)/gm;
   const LIST_INLINE_MERGE_ORDERED = /(^\s*\d+\.\s[^\n]*?)(\d+\.\s)/gm;
-  // Placeholder-end pattern: matches code-placeholder end (\d+__) immediately before list marker
-  // e.g. "__INLINE_CODE_0__-次の項目" → "__INLINE_CODE_0__\n-次の項目"
-  // Safe: \d+__ is specific to yuuhitsu placeholder format; false positive risk is minimal.
-  const LIST_INLINE_MERGE_PLACEHOLDER_UNORDERED = /(\d+__)([-*+])/gm;
-  const LIST_INLINE_MERGE_PLACEHOLDER_ORDERED = /(\d+__)(\d+\.)/gm;
+  // Placeholder-end pattern: matches code-placeholder end (\d+__) immediately before list marker.
+  // Inserts "\n" + space (standard list-item format: "- content") so the new line passes
+  // /^\s*[-*+]\s/ checks in integration tests.
+  // (?=[^a-z]) guard avoids false positives for "__CODE__-style" (lowercase word hyphens).
+  // e.g. "__INLINE_CODE_0__-次の項目" → "__INLINE_CODE_0__\n- 次の項目"
+  const LIST_INLINE_MERGE_PLACEHOLDER_UNORDERED = /(\d+__)([-*+])(?=[^a-z])/gm;
+  const LIST_INLINE_MERGE_PLACEHOLDER_ORDERED = /(\d+__)(\d+\.)(?=[^a-z])/gm;
 
   // Apply iteratively: JavaScript replace() scans left-to-right in the original string,
   // so "- A- B- C" needs two passes (first splits A-B, second splits B-C on the new line).
@@ -267,11 +269,11 @@ export function restoreBlockBoundaries(content: string): string {
     });
     restored = restored.replace(LIST_INLINE_MERGE_PLACEHOLDER_UNORDERED, (_match, p1, p2) => {
       layer3applied = true;
-      return `${p1}\n${p2}`;
+      return `${p1}\n${p2} `;  // trailing space ensures valid "- content" list-item format
     });
     restored = restored.replace(LIST_INLINE_MERGE_PLACEHOLDER_ORDERED, (_match, p1, p2) => {
       layer3applied = true;
-      return `${p1}\n${p2}`;
+      return `${p1}\n${p2} `;
     });
   } while (restored !== prev);
 
