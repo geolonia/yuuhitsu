@@ -8,31 +8,36 @@ import {
 const BB = BLOCK_BOUNDARY_SENTINEL;
 
 describe("protectBlockBoundaries", () => {
-  it("inserts sentinel before unordered list items", () => {
+  it("inserts DOUBLE sentinel BEFORE unordered list items (P-A4 v3)", () => {
     const input = "Some text\n- item A\n- item B";
     const result = protectBlockBoundaries(input);
-    expect(result).toBe(`Some text\n${BB}\n- item A\n${BB}\n- item B`);
+    // Each list item: 2 sentinels before, none after (clean round-trip, no trailing \n)
+    expect(result).toBe(
+      `Some text\n${BB}\n${BB}\n- item A\n${BB}\n${BB}\n- item B`
+    );
   });
 
-  it("inserts sentinel before ordered list items", () => {
+  it("inserts DOUBLE sentinel BEFORE ordered list items (P-A4 v3)", () => {
     const input = "Intro\n1. first\n2. second";
     const result = protectBlockBoundaries(input);
-    expect(result).toBe(`Intro\n${BB}\n1. first\n${BB}\n2. second`);
+    expect(result).toBe(
+      `Intro\n${BB}\n${BB}\n1. first\n${BB}\n${BB}\n2. second`
+    );
   });
 
-  it("inserts sentinel before headings (all levels)", () => {
+  it("inserts single sentinel before headings (unchanged from 0.1.16)", () => {
     const input = "# H1\n## H2\n### H3";
     const result = protectBlockBoundaries(input);
     expect(result).toBe(`${BB}\n# H1\n${BB}\n## H2\n${BB}\n### H3`);
   });
 
-  it("inserts sentinel before horizontal rules", () => {
+  it("inserts single sentinel before horizontal rules (unchanged from 0.1.16)", () => {
     const input = "text\n---\nmore";
     const result = protectBlockBoundaries(input);
     expect(result).toBe(`text\n${BB}\n---\nmore`);
   });
 
-  it("inserts sentinel before fenced code blocks", () => {
+  it("inserts single sentinel before fenced code blocks (unchanged from 0.1.16)", () => {
     const input = "text\n```json\n{}\n```\nend";
     const result = protectBlockBoundaries(input);
     expect(result).toBe(`text\n${BB}\n\`\`\`json\n{}\n${BB}\n\`\`\`\nend`);
@@ -44,41 +49,49 @@ describe("protectBlockBoundaries", () => {
     expect(result).toBe("line one\n\nline two");
   });
 
-  it("handles document starting with a structural element", () => {
+  it("handles document starting with a heading (single sentinel)", () => {
     const input = "# Title\n\nSome text.";
     const result = protectBlockBoundaries(input);
     expect(result).toBe(`${BB}\n# Title\n\nSome text.`);
   });
 
-  it("inserts sentinel before __CODE_BLOCK_N__ placeholders (fence-adjacent protection)", () => {
+  it("inserts double sentinel before list, single before __CODE_BLOCK_N__", () => {
     const input = "- **macOS**: `~/path`\n\n__CODE_BLOCK_0__";
     const result = protectBlockBoundaries(input);
+    expect(result).toContain(`${BB}\n${BB}\n- **macOS**`);
     expect(result).toContain(`${BB}\n__CODE_BLOCK_0__`);
+    // CODE_BLOCK placeholder gets only single sentinel (not double)
+    const beforeCodeBlock = result.split("__CODE_BLOCK_0__")[0];
+    expect(beforeCodeBlock.endsWith(`${BB}\n`)).toBe(true);
+    expect(beforeCodeBlock.endsWith(`${BB}\n${BB}\n`)).toBe(false);
   });
 
-  it("inserts sentinel before hr (asterisk ***) and hr (underscore ___)", () => {
+  it("inserts single sentinel before hr (asterisk ***) and hr (underscore ___)", () => {
     const input = "text\n***\n___\nend";
     const result = protectBlockBoundaries(input);
     expect(result).toBe(`text\n${BB}\n***\n${BB}\n___\nend`);
   });
 
-  it("inserts sentinel before tilde fenced code blocks", () => {
+  it("inserts single sentinel before tilde fenced code blocks", () => {
     const input = "text\n~~~yaml\nkey: value\n~~~\nend";
     const result = protectBlockBoundaries(input);
     expect(result).toContain(`${BB}\n~~~yaml`);
   });
 
-  it("inserts sentinel before indented list items", () => {
+  it("inserts double sentinel before indented list items (P-A4 v3)", () => {
     const input = "- parent\n  - child";
     const result = protectBlockBoundaries(input);
-    expect(result).toBe(`${BB}\n- parent\n${BB}\n  - child`);
+    // Both parent and child list items get double sentinel BEFORE
+    expect(result).toContain(`${BB}\n${BB}\n- parent`);
+    expect(result).toContain(`${BB}\n${BB}\n  - child`);
   });
 
   it("escapes pre-existing <!--BB--> in user content before inserting sentinels", () => {
     const input = `Some text with ${BB} literal\n- list item`;
     const result = protectBlockBoundaries(input);
     // Pre-existing <!--BB--> must not be treated as a sentinel
-    expect(result.split(BB).length).toBe(2); // only one sentinel (before list item)
+    // Sentinels: 2 before the list item = 2 sentinel splits, plus the escaped original = 3 parts
+    expect(result.split(BB).length).toBe(3); // 2 sentinels + escaped literal = 3 parts
     // Original <!--BB--> is escaped and restorable
     const roundTrip = restoreBlockBoundaries(result);
     expect(roundTrip).toBe(input);
@@ -88,6 +101,11 @@ describe("protectBlockBoundaries", () => {
 describe("restoreBlockBoundaries", () => {
   it("round-trip: protect then restore returns original (list items)", () => {
     const original = "Some text\n- item A\n- item B";
+    expect(restoreBlockBoundaries(protectBlockBoundaries(original))).toBe(original);
+  });
+
+  it("round-trip: protect then restore returns original (ordered list)", () => {
+    const original = "Intro\n1. first\n2. second\n3. third";
     expect(restoreBlockBoundaries(protectBlockBoundaries(original))).toBe(original);
   });
 
@@ -106,14 +124,18 @@ describe("restoreBlockBoundaries", () => {
     expect(restoreBlockBoundaries(protectBlockBoundaries(original))).toBe(original);
   });
 
+  it("round-trip: nested list preserved", () => {
+    const original = "- parent\n  - child A\n  - child B";
+    expect(restoreBlockBoundaries(protectBlockBoundaries(original))).toBe(original);
+  });
+
   it("returns content unchanged when no sentinel present", () => {
     const content = "plain text\nno structural elements";
     expect(restoreBlockBoundaries(content)).toBe(content);
   });
 
   it("restores newline from collapsed sentinel (PR#155 list-list pattern)", () => {
-    // LLM collapsed: "- Status: `201 Created`- Status: `409 AlreadyExists`"
-    // With sentinels (collapsed by LLM): sentinel inline instead of own line
+    // LLM collapsed: sentinel inline instead of own line
     const brokenLLMOutput = `- Status: \`201 Created\`${BB}- Status: \`409 AlreadyExists\``;
     const restored = restoreBlockBoundaries(brokenLLMOutput);
     expect(restored).toBe("- Status: `201 Created`\n- Status: `409 AlreadyExists`");
@@ -141,16 +163,103 @@ describe("restoreBlockBoundaries", () => {
   });
 
   it("handles sentinel at document start (no preceding content)", () => {
-    // Protect inserts sentinel before first structural element
     const protected_ = `${BB}\n# Title\n\nBody.`;
     const restored = restoreBlockBoundaries(protected_);
     expect(restored).toBe("# Title\n\nBody.");
   });
 
-  it("handles consecutive sentinels (LLM duplication edge case)", () => {
+  it("handles consecutive sentinels (double-sentinel from P-A4 v3)", () => {
     const input = `item A${BB}${BB}item B`;
     const restored = restoreBlockBoundaries(input);
     expect(restored).toBe("item A\nitem B");
+  });
+});
+
+describe("restoreBlockBoundaries Layer 3 list-aware fallback (P-A4 v3)", () => {
+  it("splits inline-concatenated unordered list items (- A- B → - A\\n- B)", () => {
+    const collapsed = "- Item A- Item B";
+    const restored = restoreBlockBoundaries(collapsed);
+    expect(restored).toBe("- Item A\n- Item B");
+  });
+
+  it("splits inline-concatenated asterisk list items (* A* B)", () => {
+    const collapsed = "* Item A* Item B";
+    const restored = restoreBlockBoundaries(collapsed);
+    expect(restored).toBe("* Item A\n* Item B");
+  });
+
+  it("splits inline-concatenated plus list items (+ A+ B)", () => {
+    const collapsed = "+ Item A+ Item B";
+    const restored = restoreBlockBoundaries(collapsed);
+    expect(restored).toBe("+ Item A\n+ Item B");
+  });
+
+  it("splits inline-concatenated ordered list items (1. A2. B)", () => {
+    const collapsed = "1. Step one2. Step two";
+    const restored = restoreBlockBoundaries(collapsed);
+    expect(restored).toBe("1. Step one\n2. Step two");
+  });
+
+  it("splits 3-item inline-concatenated list (- A- B- C)", () => {
+    const collapsed = "- A- B- C";
+    const restored = restoreBlockBoundaries(collapsed);
+    expect(restored).toBe("- A\n- B\n- C");
+  });
+
+  it("does not falsely split prose with hyphens (non-list-start)", () => {
+    // This line does NOT start with a list marker, so Layer 3 should not touch it
+    const prose = "This is a note — important — remember.";
+    expect(restoreBlockBoundaries(prose)).toBe(prose);
+  });
+
+  it("does not falsely split embedded list-like tokens in list item prose (false positive guard)", () => {
+    // "- Linux - macOS support" — the embedded "- macOS" is preceded by a space;
+    // (?<!\s) lookbehind in LIST_INLINE_MERGE_UNORDERED must prevent this split.
+    const item = "- Linux - macOS support";
+    expect(restoreBlockBoundaries(item)).toBe(item);
+    // Ordered list variant: "1. See 2. Related docs"
+    const ordered = "1. See 2. Related docs";
+    expect(restoreBlockBoundaries(ordered)).toBe(ordered);
+  });
+
+  it("does not falsely split inline code containing dashes", () => {
+    const code = "- Run `foo-bar --flag` to start";
+    // The `--flag` inside backticks is already protected as a placeholder in real pipeline
+    // Layer 3 regex: the `--` inside doesn't start a new list item (no whitespace after -)
+    expect(restoreBlockBoundaries(code)).toBe(code);
+  });
+
+  it("does not falsely split hyphenated words in list items (false positive guard)", () => {
+    const item = "- first-person narrative";
+    // No \d+__ placeholder before hyphen → should NOT split
+    expect(restoreBlockBoundaries(item)).toBe(item);
+  });
+
+  it("does not falsely split placeholder followed by lowercase-word hyphen (false positive guard)", () => {
+    // e.g. "- Use `code`-style formatting" → after protect: "- Use __INLINE_CODE_0__-style"
+    // (?=[^a-z]) guard: 's' is [a-z] → no split
+    const item = "- Use __INLINE_CODE_0__-style formatting";
+    expect(restoreBlockBoundaries(item)).toBe(item);
+  });
+
+  it("splits placeholder-end no-space collapse (- item: __INLINE_CODE_0__-次の項目)", () => {
+    // Simulates LLM collapsing "- item: __INLINE_CODE_0__\n- 次の項目: __INLINE_CODE_1__"
+    // into one line without space (common in Japanese translation).
+    // Replacement inserts space after marker so "/^\s*[-*+]\s/" matches the new line.
+    const collapsed = "- item: __INLINE_CODE_0__-次の項目: __INLINE_CODE_1__";
+    const restored = restoreBlockBoundaries(collapsed);
+    expect(restored).toBe("- item: __INLINE_CODE_0__\n- 次の項目: __INLINE_CODE_1__");
+  });
+
+  it("splits placeholder-only list collapse (__INLINE_CODE_0__-__INLINE_CODE_1__-__INLINE_CODE_2__)", () => {
+    // Simulates fixture 12 pattern: list items are entirely inline code placeholders.
+    // LIST_INLINE_MERGE_PLACEHOLDER_UNORDERED splits `0__-__INLINE_CODE_1` at the `0__-` boundary.
+    // Replacement inserts "\n- " (trailing space) → each placeholder lands on its own "- " line.
+    const collapsed = "- __INLINE_CODE_0__-__INLINE_CODE_1__-__INLINE_CODE_2__";
+    const restored = restoreBlockBoundaries(collapsed);
+    expect(restored).toBe(
+      "- __INLINE_CODE_0__\n- __INLINE_CODE_1__\n- __INLINE_CODE_2__"
+    );
   });
 });
 
@@ -192,7 +301,8 @@ describe("restoreBlockBoundaries variant detection (3-pass fallback regex)", () 
   });
 
   it("exact sentinel is unaffected by fallback pass (no double-processing)", () => {
-    const input = `${BB}\n- item A\n${BB}\n- item B`;
+    // Double-sentinel (P-A4 v3 format) restores correctly
+    const input = `${BB}\n${BB}\n- item A\n${BB}\n${BB}\n- item B`;
     const restored = restoreBlockBoundaries(input);
     expect(restored).toBe("- item A\n- item B");
   });

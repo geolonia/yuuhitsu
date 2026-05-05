@@ -139,5 +139,117 @@ describeTest(
       },
       60000
     );
+
+    it(
+      "fixture 6 (P-A4 v3): 2-item simple list preserved after LLM round-trip",
+      async () => {
+        const { input, output } = await runTranslation("p-a4-6");
+
+        assertStructuralIntegrity(input, output, "fixture 6");
+
+        const listLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
+        expect(listLines.length, "fixture 6: at least 2 list items on separate lines").toBeGreaterThanOrEqual(2);
+      },
+      60000
+    );
+
+    it(
+      "fixture 7 (P-A4 v3): ordered list (3 items) preserved after LLM round-trip",
+      async () => {
+        const { input, output } = await runTranslation("p-a4-7");
+
+        assertStructuralIntegrity(input, output, "fixture 7");
+
+        const orderedListLines = output.split("\n").filter((l) => /^\s*\d+\.\s/.test(l));
+        expect(orderedListLines.length, "fixture 7: at least 3 ordered list items on separate lines").toBeGreaterThanOrEqual(3);
+      },
+      60000
+    );
+
+    it(
+      "fixture 8 (P-A4 v3): nested list (2 levels) preserved after LLM round-trip",
+      async () => {
+        const { input, output } = await runTranslation("p-a4-8");
+
+        assertStructuralIntegrity(input, output, "fixture 8");
+
+        const listLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
+        expect(listLines.length, "fixture 8: at least 3 list items (top + nested) on separate lines").toBeGreaterThanOrEqual(3);
+      },
+      60000
+    );
+
+    it(
+      "fixture 9 (P-A4 v3): list + blank line + heading mix preserved",
+      async () => {
+        const { input, output } = await runTranslation("p-a4-9");
+
+        assertStructuralIntegrity(input, output, "fixture 9");
+
+        const listLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
+        expect(listLines.length, "fixture 9: at least 3 list items on separate lines").toBeGreaterThanOrEqual(3);
+
+        const headingLines = output.split("\n").filter((l) => /^ {0,3}#{1,6}\s/.test(l));
+        expect(headingLines.length, "fixture 9: headings preserved on separate lines").toBeGreaterThanOrEqual(2);
+      },
+      60000
+    );
+
+    it(
+      "fixture 10 (P-A4 v3): list + 4-backtick fence boundary preserved",
+      async () => {
+        const { input, output } = await runTranslation("p-a4-10");
+
+        assertStructuralIntegrity(input, output, "fixture 10");
+
+        const listLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
+        expect(listLines.length, "fixture 10: at least 2 list items on separate lines").toBeGreaterThanOrEqual(2);
+
+        expect(output, "fixture 10: code fence preserved").toMatch(/```/);
+      },
+      60000
+    );
+
+    it(
+      "fixture 11 (P-A4 v3): long list (10+ items) preserved after LLM round-trip",
+      async () => {
+        const { input, output } = await runTranslation("p-a4-11");
+
+        assertStructuralIntegrity(input, output, "fixture 11");
+
+        const listLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
+        expect(listLines.length, "fixture 11: at least 10 list items on separate lines").toBeGreaterThanOrEqual(10);
+      },
+      60000
+    );
+
+    it(
+      "fixture 12 (P-A4 v3): list with inline code items preserved",
+      async () => {
+        const { input, output } = await runTranslation("p-a4-12");
+
+        assertStructuralIntegrity(input, output, "fixture 12");
+
+        const listLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
+        expect(listLines.length, "fixture 12: at least 3 list items on separate lines").toBeGreaterThanOrEqual(3);
+      },
+      60000
+    );
+
+    it(
+      "fixture 13 (P-A4 v3): mixed unordered + ordered list preserved",
+      async () => {
+        const { input, output } = await runTranslation("p-a4-13");
+
+        assertStructuralIntegrity(input, output, "fixture 13");
+
+        const unorderedLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
+        expect(unorderedLines.length, "fixture 13: at least 2 unordered list items on separate lines").toBeGreaterThanOrEqual(2);
+
+        const orderedLines = output.split("\n").filter((l) => /^\s*\d+\.\s/.test(l));
+        expect(orderedLines.length, "fixture 13: at least 2 ordered list items on separate lines").toBeGreaterThanOrEqual(2);
+      },
+      60000
+    );
   }
 );
