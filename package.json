@@ -12,7 +12,7 @@
     "dev": "tsx src/cli/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run tests/integration/translate-block-boundaries.real-llm.test.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "lint": "tsc --noEmit"
   },
   "keywords": [
