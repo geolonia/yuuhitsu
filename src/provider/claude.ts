@@ -4,7 +4,34 @@ import type {
   ChatRequest,
   ChatResponse,
   StreamChunk,
+  StructuredTranslateRequest,
+  StructuredTranslateResponse,
 } from "./interface.js";
+
+const TRANSLATION_TOOL_NAME = "record_translations";
+
+const TRANSLATION_TOOL: Anthropic.Tool = {
+  name: TRANSLATION_TOOL_NAME,
+  description: "Record the translated text segments in structured JSON format",
+  input_schema: {
+    type: "object",
+    properties: {
+      translations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "integer", description: "Segment ID (must match input ID exactly)" },
+            text: { type: "string", description: "Translated text for this segment" },
+          },
+          required: ["id", "text"],
+        },
+        description: "Translated segments — one entry per input segment, ID must match",
+      },
+    },
+    required: ["translations"],
+  },
+};
 
 export class ClaudeProvider implements AIProvider {
   private client: Anthropic;
@@ -83,5 +110,56 @@ export class ClaudeProvider implements AIProvider {
       }
     }
     yield { content: "", done: true };
+  }
+
+  /**
+   * Translate segments using Anthropic tool_use (structured output).
+   * Forces Claude to return a JSON object matching the translation schema —
+   * no prose wrapping, no schema deviations.
+   */
+  async translateStructured(
+    request: StructuredTranslateRequest
+  ): Promise<StructuredTranslateResponse> {
+    const response = await this.client.messages.create({
+      model: request.model || this.model,
+      max_tokens: request.maxTokens ?? 4096,
+      system: request.systemPrompt,
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify({ segments: request.segments }),
+        },
+      ],
+      tools: [TRANSLATION_TOOL],
+      tool_choice: { type: "tool", name: TRANSLATION_TOOL_NAME },
+    });
+
+    const toolUseBlock = response.content.find(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+    );
+    if (!toolUseBlock) {
+      throw new Error(
+        `[yuuhitsu] ClaudeProvider.translateStructured: no tool_use block in response` +
+          ` (stop_reason: ${response.stop_reason})`
+      );
+    }
+
+    const input = toolUseBlock.input as {
+      translations?: Array<{ id: number; text: string }>;
+    };
+    if (!Array.isArray(input.translations)) {
+      throw new Error(
+        `[yuuhitsu] ClaudeProvider.translateStructured: translations field is missing or not an array`
+      );
+    }
+
+    return {
+      translations: input.translations,
+      usage: {
+        promptTokens: response.usage.input_tokens,
+        completionTokens: response.usage.output_tokens,
+        totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+      },
+    };
   }
 }

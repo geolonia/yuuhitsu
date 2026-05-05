@@ -4,6 +4,16 @@
 
 ## [0.2.0] - 2026-05-05
 
+### Added
+- **[feat] cmd_410 Phase B structured output** — Claude tool_use integration for guaranteed 1:1 ID mapping
+  - `ClaudeProvider` now implements optional `translateStructured(request)` method
+  - Uses Anthropic `tools` API with `tool_choice: { type: "tool", name: "record_translations" }` to force JSON schema at the API level — no prose-wrapping, no schema deviations
+  - `AIProvider` interface extended with optional `translateStructured?` method (`StructuredTranslateRequest` / `StructuredTranslateResponse` types added to `src/provider/interface.ts`)
+  - `translateBatch` in `translate.ts` detects `provider.translateStructured` and uses it automatically; Gemini and Ollama fall back to text-mode JSON (unchanged)
+  - 1:1 ID mapping validated in both paths: throws `Error` if any segment IDs are missing from the response
+  - System prompt for structured path (`buildStructuredSystemPrompt`) omits JSON format instructions — schema enforces response shape
+  - P-A1 truncation check ported to structured path (compares total translated chars to input chars)
+
 ### Changed (BREAKING)
 - **[feat] cmd_409 AST-based translate** — complete rewrite of translation architecture (0.2.0)
   - `translateFile` now uses remark + remark-gfm to parse markdown into mdast AST before translation

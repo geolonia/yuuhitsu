@@ -292,7 +292,8 @@ function extractTextNodes(ast: Root): TextNodeRef[] {
 }
 
 /**
- * Build system prompt for text-mode batch translation.
+ * Build system prompt for text-mode batch translation (Gemini / Ollama fallback).
+ * Includes JSON format instructions since we're relying on the LLM to output JSON.
  */
 function buildBatchSystemPrompt(
   targetLang: string,
@@ -337,6 +338,35 @@ Example output:
   return prompt;
 }
 
+/**
+ * Build system prompt for structured output translation (Claude tool_use path).
+ * No JSON format instructions needed — the tool schema enforces the response shape.
+ */
+function buildStructuredSystemPrompt(
+  targetLang: string,
+  templateContent?: string,
+  glossaryConfig?: GlossaryConfig
+): string {
+  const basePrompt = templateContent
+    ? templateContent.replace(/\{\{targetLanguage\}\}/g, targetLang)
+    : `You are a professional translator. Translate each text segment to ${targetLang}.
+
+Rules:
+- Translate only the text content; do not alter structure or punctuation outside the text
+- Preserve proper nouns, code identifiers, URLs, and file paths unchanged
+- Produce natural, fluent text in the target language
+- For Japanese: use full-width punctuation (。、？！), add half-width spaces around English words/numbers
+- Keep product names, abbreviations, and technical terms unchanged (e.g., NGSI-LD, MCP, GeoJSON)
+- Each segment is independent; translate it on its own`;
+
+  let prompt = basePrompt;
+  if (glossaryConfig) {
+    const glossarySection = buildGlossaryPrompt(glossaryConfig, targetLang);
+    if (glossarySection) prompt += glossarySection;
+  }
+  return prompt;
+}
+
 interface Segment {
   id: number;
   text: string;
@@ -347,11 +377,10 @@ interface TranslationResponse {
 }
 
 /**
- * Parse translation JSON response from LLM.
+ * Parse translation JSON response from LLM (text mode fallback).
  * Handles both clean JSON and JSON embedded in prose (extracts first {...} block).
  */
 function parseTranslationResponse(raw: string): TranslationResponse {
-  // Try direct parse first
   const trimmed = raw.trim();
   try {
     return JSON.parse(trimmed) as TranslationResponse;
@@ -367,7 +396,12 @@ function parseTranslationResponse(raw: string): TranslationResponse {
 
 /**
  * Translate a batch of text segments using the provider.
- * Uses JSON-based structured format for reliable parsing.
+ *
+ * - If the provider implements `translateStructured` (Claude): uses tool_use to
+ *   enforce the JSON schema at the API level, guaranteeing 1:1 ID mapping.
+ * - Otherwise: falls back to text-mode JSON prompt (Gemini / Ollama).
+ *
+ * In both paths the 1:1 ID mapping is validated and an error is thrown on mismatch.
  */
 async function translateBatch(
   provider: AIProvider,
@@ -381,40 +415,62 @@ async function translateBatch(
   }
 
   const segments: Segment[] = nodes.map(({ node, id }) => ({ id, text: node.value }));
-  const inputJson = JSON.stringify({ segments });
 
   // P-A1: track total input character count for truncation detection
   const totalInputChars = segments.reduce((sum, s) => sum + s.text.length, 0);
 
-  const systemPrompt = buildBatchSystemPrompt(targetLang, templateContent, glossaryConfig);
-  const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: inputJson },
-  ];
+  let translations: Segment[];
+  let usage: { promptTokens: number; completionTokens: number; totalTokens: number };
 
-  const response = await provider.chat({ model: "", messages });
+  if (provider.translateStructured) {
+    // Structured output path: provider (Claude) enforces JSON schema via tool_use
+    const systemPrompt = buildStructuredSystemPrompt(targetLang, templateContent, glossaryConfig);
+    const result = await provider.translateStructured({ segments, systemPrompt });
+    translations = result.translations;
+    usage = result.usage;
 
-  // P-A1: warn if output is suspiciously short (truncation check)
-  const totalOutputChars = response.content.length;
-  if (totalInputChars > 0 && totalOutputChars < totalInputChars * MIN_OUTPUT_RATIO) {
-    console.warn(
-      `[yuuhitsu] translateBatch: output may be truncated ` +
-      `(input chars: ${totalInputChars}, output chars: ${totalOutputChars})`
-    );
+    // P-A1: warn on truncation (compare translated chars to input chars)
+    const totalOutputChars = translations.reduce((sum, t) => sum + t.text.length, 0);
+    if (totalInputChars > 0 && totalOutputChars < totalInputChars * MIN_OUTPUT_RATIO) {
+      console.warn(
+        `[yuuhitsu] translateBatch: output may be truncated ` +
+          `(input chars: ${totalInputChars}, output chars: ${totalOutputChars})`
+      );
+    }
+  } else {
+    // Text mode fallback: Gemini / Ollama
+    const systemPrompt = buildBatchSystemPrompt(targetLang, templateContent, glossaryConfig);
+    const messages: ChatMessage[] = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: JSON.stringify({ segments }) },
+    ];
+    const response = await provider.chat({ model: "", messages });
+
+    // P-A1: warn if output is suspiciously short (truncation check)
+    const totalOutputChars = response.content.length;
+    if (totalInputChars > 0 && totalOutputChars < totalInputChars * MIN_OUTPUT_RATIO) {
+      console.warn(
+        `[yuuhitsu] translateBatch: output may be truncated ` +
+          `(input chars: ${totalInputChars}, output chars: ${totalOutputChars})`
+      );
+    }
+
+    const parsed = parseTranslationResponse(response.content);
+    translations = parsed.translations;
+    usage = response.usage;
   }
 
-  // Parse response and apply translations back to AST nodes
-  const parsed = parseTranslationResponse(response.content);
-  const translationMap = new Map(parsed.translations.map((t) => [t.id, t.text]));
-
-  // Fail fast if any node IDs are missing (partial JSON response)
+  // Validate 1:1 ID mapping (both paths — structured path enforced by schema + this check)
+  const translationMap = new Map(translations.map((t) => [t.id, t.text]));
   const missingIds = nodes.filter(({ id }) => !translationMap.has(id)).map(({ id }) => id);
   if (missingIds.length > 0) {
     throw new Error(
-      `[yuuhitsu] translateBatch: partial translation — ${missingIds.length} node(s) missing from response (IDs: ${missingIds.join(", ")})`
+      `[yuuhitsu] translateBatch: partial translation — ${missingIds.length} node(s) missing` +
+        ` from response (IDs: ${missingIds.join(", ")})`
     );
   }
 
+  // Apply translations back to AST nodes
   for (const { node, id } of nodes) {
     const translated = translationMap.get(id);
     if (translated !== undefined && translated.trim()) {
@@ -422,7 +478,7 @@ async function translateBatch(
     }
   }
 
-  return { usage: response.usage };
+  return { usage };
 }
 
 function resolveOutputPath(
