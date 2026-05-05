@@ -74,12 +74,12 @@ describe("protectBlockBoundaries", () => {
     expect(result).toBe(`${BB}\n- parent\n${BB}\n  - child`);
   });
 
-  it("escapes pre-existing %%BB%% in user content before inserting sentinels", () => {
+  it("escapes pre-existing <!--BB--> in user content before inserting sentinels", () => {
     const input = `Some text with ${BB} literal\n- list item`;
     const result = protectBlockBoundaries(input);
-    // Pre-existing %%BB%% must not be treated as a sentinel
+    // Pre-existing <!--BB--> must not be treated as a sentinel
     expect(result.split(BB).length).toBe(2); // only one sentinel (before list item)
-    // Original %%BB%% is escaped and restorable
+    // Original <!--BB--> is escaped and restorable
     const roundTrip = restoreBlockBoundaries(result);
     expect(roundTrip).toBe(input);
   });
@@ -151,6 +151,50 @@ describe("restoreBlockBoundaries", () => {
     const input = `item A${BB}${BB}item B`;
     const restored = restoreBlockBoundaries(input);
     expect(restored).toBe("item A\nitem B");
+  });
+});
+
+describe("restoreBlockBoundaries variant detection (3-pass fallback regex)", () => {
+  it("normalizes <!-- BB --> (internal whitespace variant) via fallback", () => {
+    const input = "text<!-- BB -->sentence";
+    expect(restoreBlockBoundaries(input)).toBe("text\nsentence");
+  });
+
+  it("normalizes <!--BB__--> (underscore suffix variant) via fallback", () => {
+    expect(restoreBlockBoundaries("text<!--BB__-->sentence")).toBe("text\nsentence");
+  });
+
+  it("normalizes <!--BBx--> (letter suffix variant) via fallback", () => {
+    expect(restoreBlockBoundaries("text<!--BBx-->sentence")).toBe("text\nsentence");
+  });
+
+  it("normalizes <!--BB-x--> (hyphen suffix variant) via fallback", () => {
+    expect(restoreBlockBoundaries("text<!--BB-x-->sentence")).toBe("text\nsentence");
+  });
+
+  it("normalizes <!--  BB  --> (multiple spaces variant) via fallback", () => {
+    expect(restoreBlockBoundaries("text<!--  BB  -->sentence")).toBe("text\nsentence");
+  });
+
+  it("round-trip: protect then restore with <!-- BB --> variant returns original", () => {
+    const original = "Some text\n- item A\n- item B";
+    const protected_ = protectBlockBoundaries(original);
+    // Simulate LLM outputting internal-whitespace variant
+    const withVariant = protected_.replace(/<!--BB-->/g, "<!-- BB -->");
+    expect(restoreBlockBoundaries(withVariant)).toBe(original);
+  });
+
+  it("round-trip: protect then restore with <!--BB__--> variant returns original", () => {
+    const original = "Intro\n## Section\n\nBody.";
+    const protected_ = protectBlockBoundaries(original);
+    const withVariant = protected_.replace(/<!--BB-->/g, "<!--BB__-->");
+    expect(restoreBlockBoundaries(withVariant)).toBe(original);
+  });
+
+  it("exact sentinel is unaffected by fallback pass (no double-processing)", () => {
+    const input = `${BB}\n- item A\n${BB}\n- item B`;
+    const restored = restoreBlockBoundaries(input);
+    expect(restored).toBe("- item A\n- item B");
   });
 });
 

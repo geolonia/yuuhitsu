@@ -121,10 +121,14 @@ export function restoreCodeBlocks(content: string, map: Map<string, string>): st
   return result;
 }
 
-export const BLOCK_BOUNDARY_SENTINEL = "%%BB%%";
-// Temporary escape for pre-existing %%BB%% literals in user content.
+export const BLOCK_BOUNDARY_SENTINEL = "<!--BB-->";
+// Temporary escape for pre-existing <!--BB--> literals in user content.
 // Uses a character sequence unlikely to appear in markdown documents.
 const ESCAPED_SENTINEL = "\x01BB\x01";
+// Fallback regex: catches LLM-deformed variants (e.g. <!-- BB -->, <!--BB__-->, <!--BBx-->)
+const SENTINEL_FALLBACK = /<!--\s*BB[a-zA-Z0-9_-]*\s*-->/g;
+// Broad check: detects severely-deformed residuals not caught by SENTINEL_FALLBACK
+const SENTINEL_RESIDUAL_CHECK = /<!--[\s\S]*?BB[\s\S]*?-->/g;
 
 /**
  * Insert block boundary sentinels before structural Markdown elements
@@ -134,10 +138,10 @@ const ESCAPED_SENTINEL = "\x01BB\x01";
  * the function treats those placeholders as structural to protect fence-adjacent newlines.
  */
 export function protectBlockBoundaries(content: string): string {
-  // Escape any pre-existing %%BB%% so they are not confused with control sentinels
-  const escaped = content.includes(BLOCK_BOUNDARY_SENTINEL)
-    ? content.split(BLOCK_BOUNDARY_SENTINEL).join(ESCAPED_SENTINEL)
-    : content;
+  // Escape all sentinel-like patterns (exact + variants) to prevent control-marker confusion.
+  // SENTINEL_FALLBACK covers <!--BB-->, <!-- BB -->, <!--BBx-->, <!--BB-x-->, etc.
+  // On restore, these all round-trip back to <!--BB--> (minor cosmetic vs. content deletion).
+  const escaped = content.replace(SENTINEL_FALLBACK, ESCAPED_SENTINEL);
 
   const lines = escaped.split("\n");
   const result: string[] = [];
@@ -165,17 +169,24 @@ export function protectBlockBoundaries(content: string): string {
 
 /**
  * Remove block boundary sentinels and restore newlines lost during LLM translation.
- * Handles both clean (sentinel on own line) and collapsed (sentinel inline) cases.
+ * Uses a 3-pass strategy:
+ *   Pass 1: normalize LLM-deformed variants (e.g. <!-- BB -->) to exact sentinel form
+ *   Pass 2: split + restore newlines (handles both clean and collapsed sentinel cases)
+ *   Pass 3: post-restore warning for residual sentinel-like patterns (silent failure prevention)
  */
 export function restoreBlockBoundaries(content: string): string {
-  if (!content.includes(BLOCK_BOUNDARY_SENTINEL)) {
+  // Pass 1: normalize variant sentinels introduced by LLM deformation (cmd_389 Root Cause A/B)
+  const normalized = content.replace(SENTINEL_FALLBACK, BLOCK_BOUNDARY_SENTINEL);
+
+  // Pass 2: split + restore newlines
+  if (!normalized.includes(BLOCK_BOUNDARY_SENTINEL)) {
     // Still unescape any escaped sentinels from original content
-    return content.includes(ESCAPED_SENTINEL)
-      ? content.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL)
-      : content;
+    return normalized.includes(ESCAPED_SENTINEL)
+      ? normalized.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL)
+      : normalized;
   }
 
-  const parts = content.split(BLOCK_BOUNDARY_SENTINEL);
+  const parts = normalized.split(BLOCK_BOUNDARY_SENTINEL);
   let restored = parts[0];
   for (let i = 1; i < parts.length; i++) {
     // Strip a leading newline from next part (present when LLM preserved sentinel on its own line)
@@ -189,7 +200,17 @@ export function restoreBlockBoundaries(content: string): string {
     }
   }
 
-  // Unescape any pre-existing %%BB%% that were escaped before protection
+  // Pass 3: post-restore warning for patterns not caught by SENTINEL_FALLBACK
+  // Check before unescaping to avoid false positives from user-content <!--BB-->
+  const residuals = restored.match(SENTINEL_RESIDUAL_CHECK);
+  if (residuals && residuals.length > 0) {
+    console.warn(
+      `[yuuhitsu] restoreBlockBoundaries: ${residuals.length} residual sentinel-like pattern(s) detected after restore:`,
+      residuals.slice(0, 5)
+    );
+  }
+
+  // Unescape any pre-existing <!--BB--> that were escaped before protection
   if (restored.includes(ESCAPED_SENTINEL)) {
     restored = restored.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL);
   }
@@ -268,29 +289,39 @@ function buildPrompt(
 
   if (hasSentinels) {
     systemPrompt +=
-      "\n\n## Block boundary markers (P-A4)\n" +
-      "Lines containing the marker `%%BB%%` are **block boundary markers** inserted by the\n" +
-      "translation pipeline to preserve newlines around structural elements.\n\n" +
-      "Rules for `%%BB%%` markers:\n" +
-      "- Output every `%%BB%%` marker **verbatim and unchanged** in your translation.\n" +
-      "- Each marker must remain on its own line, in the same position relative to surrounding content.\n" +
-      "- Do not translate, remove, paraphrase, or modify these markers.\n" +
-      "- Do not add new `%%BB%%` markers; only preserve existing ones.\n\n" +
-      "Example:\n" +
+      "\n\n## Block boundary markers (P-A4 v2)\n\n" +
+      "Lines containing the marker `<!--BB-->` are **block boundary markers** inserted\n" +
+      "by the translation pipeline to preserve newlines around structural elements.\n\n" +
+      "Rules for `<!--BB-->` markers (HTML comment form):\n" +
+      "- Output every `<!--BB-->` marker **verbatim and unchanged** in your translation.\n" +
+      "- Each marker must remain on its own line, in the same position relative to\n" +
+      "  surrounding content.\n" +
+      "- Do not translate, remove, paraphrase, modify, normalize whitespace inside, or\n" +
+      "  rename these markers.\n" +
+      "- Do not add new `<!--BB-->` markers; only preserve existing ones.\n\n" +
+      "Good example (correct preservation):\n" +
       "  Input:\n" +
-      "    %%BB%%\n" +
+      "    <!--BB-->\n" +
       "    - List item one\n" +
-      "    %%BB%%\n" +
+      "    <!--BB-->\n" +
       "    - List item two\n" +
-      "    %%BB%%\n" +
+      "    <!--BB-->\n" +
       "    ## Section heading\n" +
       "  Output:\n" +
-      "    %%BB%%\n" +
+      "    <!--BB-->\n" +
       "    - リスト項目その一\n" +
-      "    %%BB%%\n" +
+      "    <!--BB-->\n" +
       "    - リスト項目その二\n" +
-      "    %%BB%%\n" +
-      "    ## セクション見出し";
+      "    <!--BB-->\n" +
+      "    ## セクション見出し\n\n" +
+      "Bad examples (DO NOT do these):\n" +
+      "  - <!--BB-->  ❌ → <!--BB__-->     (added suffix — FORBIDDEN)\n" +
+      "  - <!--BB-->  ❌ → <!-- BB -->     (added internal whitespace — FORBIDDEN)\n" +
+      "  - <!--BB-->  ❌ → <!--bb-->       (case change — FORBIDDEN)\n" +
+      "  - <!--BB-->  ❌ → (omitted)       (deleted — FORBIDDEN)\n" +
+      "  - <!--BB-->  ❌ → <!--BB-x-->     (added suffix — FORBIDDEN)\n\n" +
+      "Preserve the marker exactly: 9 characters, opening `<!--`, content `BB`,\n" +
+      "closing `-->`, no whitespace, no case changes, no suffixes.";
   }
 
   if (hasPlaceholders) {

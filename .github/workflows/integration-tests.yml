@@ -1,0 +1,36 @@
+name: Integration Tests (real LLM)
+
+on:
+  pull_request:
+    paths:
+      - "src/tasks/translate.ts"
+      - "tests/integration/**"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+      - run: npm ci
+      - name: Run integration tests
+        if: ${{ env.ANTHROPIC_API_KEY != '' }}
+        run: npm run test:integration
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: integration-test-results
+          path: test-results/integration/
+          if-no-files-found: ignore
