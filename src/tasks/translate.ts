@@ -10,6 +10,7 @@ import { buildGlossaryPrompt } from "./glossary.js";
 
 export const DEFAULT_MAX_CHUNK_LINES = 150;
 const MIN_CHUNK_LINES = 50;
+export const DEFAULT_MAX_NODES_PER_BATCH = 200;
 
 // P-A1: minimum ratio of output characters to input characters (truncation check)
 const MIN_OUTPUT_RATIO = 0.3;
@@ -46,6 +47,7 @@ export interface TranslateOptions {
   templateContent?: string;
   glossaryConfig?: GlossaryConfig;
   maxChunkLines?: number;
+  maxNodesPerBatch?: number;
 }
 
 export interface TranslateResult {
@@ -564,7 +566,9 @@ export async function translateFile(
     templateContent,
     glossaryConfig,
     maxChunkLines,
+    maxNodesPerBatch,
   } = options;
+  const resolvedMaxNodes = maxNodesPerBatch ?? DEFAULT_MAX_NODES_PER_BATCH;
 
   let content: string;
   try {
@@ -600,16 +604,21 @@ export async function translateFile(
     const textNodes = extractTextNodes(ast);
 
     if (textNodes.length > 0) {
-      const { usage } = await translateBatch(
-        provider,
-        textNodes,
-        targetLang,
-        templateContent,
-        glossaryConfig
-      );
-      totalUsage.promptTokens += usage.promptTokens;
-      totalUsage.completionTokens += usage.completionTokens;
-      totalUsage.totalTokens += usage.totalTokens;
+      // Split into sub-batches when node count exceeds maxNodesPerBatch (BUG-421-dense-chunk fix).
+      // Dense files (e.g. changelog) may have 300+ nodes/chunk, causing Claude ID hallucination.
+      for (let batchStart = 0; batchStart < textNodes.length; batchStart += resolvedMaxNodes) {
+        const batch = textNodes.slice(batchStart, batchStart + resolvedMaxNodes);
+        const { usage } = await translateBatch(
+          provider,
+          batch,
+          targetLang,
+          templateContent,
+          glossaryConfig
+        );
+        totalUsage.promptTokens += usage.promptTokens;
+        totalUsage.completionTokens += usage.completionTokens;
+        totalUsage.totalTokens += usage.totalTokens;
+      }
     }
 
     // Serialize AST back to markdown

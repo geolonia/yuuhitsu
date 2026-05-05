@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { writeFileSync, readFileSync, mkdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { translateFile, splitIntoChunks } from "../../../src/tasks/translate.js";
+import { translateFile, splitIntoChunks, DEFAULT_MAX_NODES_PER_BATCH } from "../../../src/tasks/translate.js";
 
 /**
  * Create a mock provider that returns a JSON translations response.
@@ -720,5 +720,122 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
     await expect(
       translateFile({ provider: malformedProvider, inputPath, outputPath, targetLang: "ja" })
     ).rejects.toThrow(/invalid translation payload/);
+  });
+
+  describe("maxNodesPerBatch splitting (BUG-421-dense-chunk fix)", () => {
+    it("should export DEFAULT_MAX_NODES_PER_BATCH = 200", () => {
+      expect(DEFAULT_MAX_NODES_PER_BATCH).toBe(200);
+    });
+
+    it("should split dense chunk into sub-batches when nodes exceed maxNodesPerBatch", async () => {
+      // 300 paragraphs → 300 text nodes in one chunk (maxChunkLines=10000)
+      const lines = Array.from({ length: 300 }, (_, i) => `Dense paragraph ${i}.`);
+      const content = lines.join("\n\n");
+      const inputPath = join(tempDir, "dense.md");
+      const outputPath = join(tempDir, "dense.ja.md");
+      writeFileSync(inputPath, content);
+
+      const mockProvider = createMockProvider();
+
+      await translateFile({
+        provider: mockProvider,
+        inputPath,
+        outputPath,
+        targetLang: "ja",
+        maxChunkLines: 10000,
+        maxNodesPerBatch: 100,
+      });
+
+      // 300 nodes / 100 per batch = 3 calls
+      expect(mockProvider.chat).toHaveBeenCalledTimes(3);
+
+      // Each call should have at most 100 segments
+      for (const call of mockProvider.chat.mock.calls) {
+        const userMsg = call[0].messages.find((m: any) => m.role === "user");
+        const parsed = JSON.parse(userMsg.content);
+        expect(parsed.segments.length).toBeLessThanOrEqual(100);
+      }
+    });
+
+    it("should not split sparse chunk when nodes <= maxNodesPerBatch", async () => {
+      // 100 paragraphs → 100 text nodes (well within maxNodesPerBatch=200)
+      const lines = Array.from({ length: 100 }, (_, i) => `Sparse paragraph ${i}.`);
+      const content = lines.join("\n\n");
+      const inputPath = join(tempDir, "sparse.md");
+      const outputPath = join(tempDir, "sparse.ja.md");
+      writeFileSync(inputPath, content);
+
+      const mockProvider = createMockProvider();
+
+      await translateFile({
+        provider: mockProvider,
+        inputPath,
+        outputPath,
+        targetLang: "ja",
+        maxChunkLines: 10000,
+        maxNodesPerBatch: 200,
+      });
+
+      // 100 nodes / 200 per batch = 1 call
+      expect(mockProvider.chat).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle boundary: exactly maxNodesPerBatch nodes stays in a single batch", async () => {
+      // 200 paragraphs with maxNodesPerBatch=200 → exactly 1 batch
+      const lines = Array.from({ length: 200 }, (_, i) => `Boundary node ${i}.`);
+      const content = lines.join("\n\n");
+      const inputPath = join(tempDir, "boundary.md");
+      const outputPath = join(tempDir, "boundary.ja.md");
+      writeFileSync(inputPath, content);
+
+      const mockProvider = createMockProvider();
+
+      await translateFile({
+        provider: mockProvider,
+        inputPath,
+        outputPath,
+        targetLang: "ja",
+        maxChunkLines: 10000,
+        maxNodesPerBatch: 200,
+      });
+
+      expect(mockProvider.chat).toHaveBeenCalledTimes(1);
+      const userMsg = mockProvider.chat.mock.calls[0][0].messages.find(
+        (m: any) => m.role === "user"
+      );
+      const parsed = JSON.parse(userMsg.content);
+      expect(parsed.segments.length).toBe(200);
+    });
+
+    it("should correctly translate all nodes across sub-batches", async () => {
+      const textMap: Record<string, string> = {};
+      const lines: string[] = [];
+      for (let i = 0; i < 250; i++) {
+        const text = `Source text ${i}.`;
+        textMap[text] = `翻訳テキスト ${i}。`;
+        lines.push(text);
+      }
+      const content = lines.join("\n\n");
+      const inputPath = join(tempDir, "subbatch-correct.md");
+      const outputPath = join(tempDir, "subbatch-correct.ja.md");
+      writeFileSync(inputPath, content);
+
+      const mockProvider = createMockProvider(textMap);
+
+      await translateFile({
+        provider: mockProvider,
+        inputPath,
+        outputPath,
+        targetLang: "ja",
+        maxChunkLines: 10000,
+        maxNodesPerBatch: 100,
+      });
+
+      const output = readFileSync(outputPath, "utf-8");
+      // Verify translations from all 3 sub-batches are present
+      expect(output).toContain("翻訳テキスト 0。");   // batch 1
+      expect(output).toContain("翻訳テキスト 100。"); // batch 2
+      expect(output).toContain("翻訳テキスト 249。"); // batch 3
+    });
   });
 });
