@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-05
+
+### Changed (BREAKING)
+- **[feat] cmd_409 AST-based translate** — complete rewrite of translation architecture (0.2.0)
+  - `translateFile` now uses remark + remark-gfm to parse markdown into mdast AST before translation
+  - Only leaf `text` nodes are extracted and sent to LLM; all structural elements (headings, lists, code blocks, inline code, links, tables, HR) are preserved deterministically by the AST round-trip
+  - LLM receives a JSON `{ segments: [{id, text}] }` payload and returns `{ translations: [{id, text}] }` — no full-markdown context needed
+  - Fenced code blocks and inline code are never sent to LLM (AST handles them as typed nodes)
+  - **Removes** all sentinel logic: `BLOCK_BOUNDARY_SENTINEL`, `protectBlockBoundaries`, `restoreBlockBoundaries` removed from translation pipeline
+  - Adds `remark`, `remark-gfm`, `unist-util-visit` as runtime dependencies
+
+### Added
+- `extractTextNodes`, `translateBatch`, `parseTranslationResponse`, `buildBatchSystemPrompt` — new AST-based translation helpers
+- P-A1 truncation check retained: warns if output characters are < 30% of input characters
+
+### Kept (not breaking)
+- `protectCodeBlocks` / `restoreCodeBlocks` remain exported for use by `glossary-fix.ts`
+- `separateFrontmatter`, `splitIntoChunks` and all heading-based chunking utilities unchanged
+- `TranslateOptions`, `TranslateResult` interfaces unchanged
+
+### Removed
+- `BLOCK_BOUNDARY_SENTINEL`, `protectBlockBoundaries`, `restoreBlockBoundaries` from translation pipeline
+- `buildPrompt` function (replaced by `buildBatchSystemPrompt`)
+- `tests/unit/tasks/translate-block-boundaries.test.ts` (sentinel tests no longer applicable)
+
 ### Added
 - `CONTRIBUTING.md`: Phase 0 PoC step mandatory flow for LLM-related changes
 - `RELEASE.md`: canary release process documentation (npm tag `next` → 1-week dogfood → `latest` promotion, rollback procedure, post-mortem template)

@@ -2,22 +2,40 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { writeFileSync, readFileSync, mkdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { translateFile, splitIntoChunks } from "../../../src/tasks/translate.js";
 
-// Mock provider — will be injected into the translate task
-function createMockProvider(responseContent: string) {
+/**
+ * Create a mock provider that returns a JSON translations response.
+ * textMap: { [inputText]: translatedText } — maps source text to translation.
+ * Any text not in the map is returned unchanged.
+ */
+function createMockProvider(textMap: Record<string, string> = {}) {
   return {
-    chat: vi.fn().mockResolvedValue({
-      content: responseContent,
-      model: "mock-model",
-      usage: { promptTokens: 100, completionTokens: 200, totalTokens: 300 },
-      finishReason: "end_turn",
+    chat: vi.fn().mockImplementation(async (request: any) => {
+      const userMsg = request.messages.find((m: any) => m.role === "user");
+      let segments: Array<{ id: number; text: string }> = [];
+      try {
+        const parsed = JSON.parse(userMsg.content);
+        segments = parsed.segments ?? [];
+      } catch {
+        // If not JSON, no segments
+      }
+
+      const translations = segments.map((s: { id: number; text: string }) => ({
+        id: s.id,
+        text: textMap[s.text] ?? s.text,
+      }));
+
+      return {
+        content: JSON.stringify({ translations }),
+        model: "mock-model",
+        usage: { promptTokens: 100, completionTokens: 200, totalTokens: 300 },
+        finishReason: "end_turn",
+      };
     }),
     chatStream: vi.fn(),
   };
 }
-
-// Import translate task — will fail until implementation exists
-import { translateFile, splitIntoChunks } from "../../../src/tasks/translate.js";
 
 describe("Translate Task", () => {
   let tempDir: string;
@@ -32,12 +50,15 @@ describe("Translate Task", () => {
   });
 
   describe("Prompt Construction", () => {
-    it("should construct a prompt containing the input content and target language", async () => {
+    it("should send text segments as JSON to the provider", async () => {
       const inputPath = join(tempDir, "input.md");
       const outputPath = join(tempDir, "output.md");
       writeFileSync(inputPath, "# Hello World\n\nThis is a test document.\n");
 
-      const mockProvider = createMockProvider("# こんにちは世界\n\nこれはテスト文書です。\n");
+      const mockProvider = createMockProvider({
+        "Hello World": "こんにちは世界",
+        "This is a test document.": "これはテスト文書です。",
+      });
 
       await translateFile({
         provider: mockProvider,
@@ -46,28 +67,33 @@ describe("Translate Task", () => {
         targetLang: "ja",
       });
 
-      // Verify provider.chat was called with correct prompt structure
       expect(mockProvider.chat).toHaveBeenCalledTimes(1);
       const callArgs = mockProvider.chat.mock.calls[0][0];
 
-      // Should have system message with translation instructions
+      // System message should contain translation instructions
       const systemMsg = callArgs.messages.find((m: any) => m.role === "system");
       expect(systemMsg).toBeDefined();
-      expect(systemMsg.content).toContain("Markdown");
+      expect(systemMsg.content).toMatch(/translat/i);
 
-      // Should have user message with the content
+      // User message should be JSON with segments
       const userMsg = callArgs.messages.find((m: any) => m.role === "user");
       expect(userMsg).toBeDefined();
-      expect(userMsg.content).toContain("# Hello World");
-      expect(userMsg.content).toContain("This is a test document.");
+      const parsed = JSON.parse(userMsg.content);
+      expect(parsed.segments).toBeDefined();
+      expect(parsed.segments.length).toBeGreaterThan(0);
+
+      // Segments contain the actual text nodes from the document
+      const texts = parsed.segments.map((s: any) => s.text);
+      expect(texts).toContain("Hello World");
+      expect(texts).toContain("This is a test document.");
     });
 
-    it("should include target language in the prompt", async () => {
+    it("should include target language in the system prompt", async () => {
       const inputPath = join(tempDir, "input.md");
       const outputPath = join(tempDir, "output.md");
       writeFileSync(inputPath, "# Test\n");
 
-      const mockProvider = createMockProvider("# テスト\n");
+      const mockProvider = createMockProvider();
 
       await translateFile({
         provider: mockProvider,
@@ -77,9 +103,35 @@ describe("Translate Task", () => {
       });
 
       const callArgs = mockProvider.chat.mock.calls[0][0];
-      // The prompt (system or user message) should reference the target language
-      const allContent = callArgs.messages.map((m: any) => m.content).join(" ");
-      expect(allContent.toLowerCase()).toMatch(/ja|japanese/i);
+      const systemMsg = callArgs.messages.find((m: any) => m.role === "system");
+      expect(systemMsg.content.toLowerCase()).toMatch(/ja|japanese/i);
+    });
+
+    it("should NOT send code block content to the provider", async () => {
+      const inputPath = join(tempDir, "input.md");
+      const outputPath = join(tempDir, "output.md");
+      writeFileSync(
+        inputPath,
+        "# Heading\n\nSome text.\n\n```typescript\nconst x = 'hello';\n```\n\nMore text.\n"
+      );
+
+      const mockProvider = createMockProvider();
+
+      await translateFile({
+        provider: mockProvider,
+        inputPath,
+        outputPath,
+        targetLang: "ja",
+      });
+
+      const callArgs = mockProvider.chat.mock.calls[0][0];
+      const userMsg = callArgs.messages.find((m: any) => m.role === "user");
+      const parsed = JSON.parse(userMsg.content);
+      const texts = parsed.segments.map((s: any) => s.text);
+
+      // Code block content must NOT appear in segments
+      expect(texts.join(" ")).not.toContain("const x = 'hello'");
+      expect(texts.join(" ")).not.toContain("```typescript");
     });
   });
 
@@ -89,8 +141,10 @@ describe("Translate Task", () => {
       const outputPath = join(tempDir, "output.ja.md");
       writeFileSync(inputPath, "# Hello\n\nWorld\n");
 
-      const translatedContent = "# こんにちは\n\n世界\n";
-      const mockProvider = createMockProvider(translatedContent);
+      const mockProvider = createMockProvider({
+        Hello: "こんにちは",
+        World: "世界",
+      });
 
       await translateFile({
         provider: mockProvider,
@@ -101,7 +155,8 @@ describe("Translate Task", () => {
 
       expect(existsSync(outputPath)).toBe(true);
       const result = readFileSync(outputPath, "utf-8");
-      expect(result).toBe(translatedContent);
+      expect(result).toContain("こんにちは");
+      expect(result).toContain("世界");
     });
 
     it("should create parent directories if they don't exist", async () => {
@@ -109,7 +164,7 @@ describe("Translate Task", () => {
       const outputPath = join(tempDir, "nested", "deep", "output.ja.md");
       writeFileSync(inputPath, "# Test\n");
 
-      const mockProvider = createMockProvider("# テスト\n");
+      const mockProvider = createMockProvider();
 
       await translateFile({
         provider: mockProvider,
@@ -125,7 +180,7 @@ describe("Translate Task", () => {
       const inputPath = join(tempDir, "readme.md");
       writeFileSync(inputPath, "# Readme\n");
 
-      const mockProvider = createMockProvider("# 読んでください\n");
+      const mockProvider = createMockProvider({ Readme: "読んでください" });
 
       const result = await translateFile({
         provider: mockProvider,
@@ -140,22 +195,38 @@ describe("Translate Task", () => {
   });
 
   describe("Markdown Structure Preservation", () => {
-    it("should pass Markdown content to provider with code blocks replaced by placeholders", async () => {
+    it("should preserve code blocks in the output (AST round-trip)", async () => {
+      const codeBlock = "```typescript\nconst x = 'hello';\n```";
+      const markdownContent = `# Heading\n\nSome text.\n\n${codeBlock}\n\nMore text.\n`;
+
+      const inputPath = join(tempDir, "complex.md");
+      const outputPath = join(tempDir, "complex.ja.md");
+      writeFileSync(inputPath, markdownContent);
+
+      const mockProvider = createMockProvider({
+        Heading: "見出し",
+        "Some text.": "何かのテキスト。",
+        "More text.": "もっとテキスト。",
+      });
+
+      await translateFile({
+        provider: mockProvider,
+        inputPath,
+        outputPath,
+        targetLang: "ja",
+      });
+
+      const output = readFileSync(outputPath, "utf-8");
+      // Code block content must be preserved
+      expect(output).toContain("const x = 'hello';");
+      expect(output).toContain("```typescript");
+    });
+
+    it("should preserve links and tables in the output", async () => {
       const markdownContent = [
         "# Heading 1",
         "",
-        "## Heading 2",
-        "",
-        "Some text with **bold** and *italic*.",
-        "",
-        "- List item 1",
-        "- List item 2",
-        "",
-        "```typescript",
-        'const x = "hello";',
-        "```",
-        "",
-        "[Link](https://example.com)",
+        "Check [this link](https://example.com) for details.",
         "",
         "| Col1 | Col2 |",
         "|------|------|",
@@ -163,12 +234,11 @@ describe("Translate Task", () => {
         "",
       ].join("\n");
 
-      const inputPath = join(tempDir, "complex.md");
-      const outputPath = join(tempDir, "complex.ja.md");
+      const inputPath = join(tempDir, "links.md");
+      const outputPath = join(tempDir, "links.ja.md");
       writeFileSync(inputPath, markdownContent);
 
-      const translatedContent = "# 見出し1\n\n翻訳済み\n";
-      const mockProvider = createMockProvider(translatedContent);
+      const mockProvider = createMockProvider();
 
       await translateFile({
         provider: mockProvider,
@@ -177,30 +247,22 @@ describe("Translate Task", () => {
         targetLang: "ja",
       });
 
-      // Headings, links, and tables should be sent to provider
-      const callArgs = mockProvider.chat.mock.calls[0][0];
-      const userMsg = callArgs.messages.find((m: any) => m.role === "user");
-      expect(userMsg.content).toContain("# Heading 1");
-      expect(userMsg.content).toContain("[Link](https://example.com)");
-      expect(userMsg.content).toContain("| Col1 | Col2 |");
-      // Code block should be replaced with placeholder (not sent raw)
-      expect(userMsg.content).not.toContain("```typescript");
-      expect(userMsg.content).toContain("__CODE_BLOCK_0__");
+      const output = readFileSync(outputPath, "utf-8");
+      // Link URL must be preserved
+      expect(output).toContain("https://example.com");
     });
   });
 
-  describe("Large File Chunking (>50KB)", () => {
-    it("should split files larger than 50KB into chunks", async () => {
-      // Create a file larger than 50KB
-      const line = "This is a line of text that will be repeated many times to exceed 50KB.\n";
-      const content = line.repeat(Math.ceil(52000 / line.length));
-      expect(content.length).toBeGreaterThan(50 * 1024);
+  describe("Large File Chunking (>300 lines)", () => {
+    it("should split large files into multiple chunks", async () => {
+      const line = "This is a line of text that will be repeated many times.\n";
+      const content = line.repeat(350);
 
       const inputPath = join(tempDir, "large.md");
       const outputPath = join(tempDir, "large.ja.md");
       writeFileSync(inputPath, content);
 
-      const mockProvider = createMockProvider("翻訳済みチャンク\n");
+      const mockProvider = createMockProvider();
 
       await translateFile({
         provider: mockProvider,
@@ -209,10 +271,8 @@ describe("Translate Task", () => {
         targetLang: "ja",
       });
 
-      // Provider should be called multiple times for chunks
+      // Provider should be called multiple times for large files
       expect(mockProvider.chat.mock.calls.length).toBeGreaterThan(1);
-
-      // Output file should exist and contain combined translated chunks
       expect(existsSync(outputPath)).toBe(true);
     });
   });
@@ -221,7 +281,7 @@ describe("Translate Task", () => {
     it("should throw an error when input file does not exist", async () => {
       const inputPath = join(tempDir, "nonexistent.md");
       const outputPath = join(tempDir, "output.md");
-      const mockProvider = createMockProvider("");
+      const mockProvider = createMockProvider();
 
       await expect(
         translateFile({
@@ -237,7 +297,7 @@ describe("Translate Task", () => {
       const inputPath = join(tempDir, "empty.md");
       const outputPath = join(tempDir, "output.md");
       writeFileSync(inputPath, "");
-      const mockProvider = createMockProvider("");
+      const mockProvider = createMockProvider();
 
       await expect(
         translateFile({
@@ -256,7 +316,7 @@ describe("Translate Task", () => {
       const outputPath = join(tempDir, "output.ja.md");
       writeFileSync(inputPath, "# Hello\n");
 
-      const mockProvider = createMockProvider("# こんにちは\n");
+      const mockProvider = createMockProvider({ Hello: "こんにちは" });
 
       const result = await translateFile({
         provider: mockProvider,
@@ -281,15 +341,12 @@ describe("Translate Task", () => {
     });
 
     it("should split long content at ## heading boundaries", () => {
-      // 3 sections of 210 lines each = 630 lines total, each starts with ##
       const makeSection = (n: number) =>
         [`## Section ${n}`, ...Array.from({ length: 209 }, (_, i) => `Line ${i}`)].join("\n");
       const content = [makeSection(1), makeSection(2), makeSection(3)].join("\n");
 
       const chunks = splitIntoChunks(content, 300);
-      // 630 total lines → must be split into multiple chunks
       expect(chunks.length).toBeGreaterThan(1);
-      // Every chunk except possibly the first should start with ##
       const nonFirstChunks = chunks.slice(1);
       for (const chunk of nonFirstChunks) {
         expect(chunk.trimStart()).toMatch(/^## Section/);
@@ -297,7 +354,6 @@ describe("Translate Task", () => {
     });
 
     it("should not split in the middle of a table", () => {
-      // 295 regular lines, then a 20-row table, then 30 after-table lines = 345 total
       const regularLines = Array.from({ length: 295 }, (_, i) => `Line ${i}`);
       const tableLines = [
         "| Header1 | Header2 |",
@@ -309,10 +365,8 @@ describe("Translate Task", () => {
 
       const chunks = splitIntoChunks(content, 300);
 
-      // Content must be split (total 345 lines > 300)
       expect(chunks.length).toBeGreaterThan(1);
 
-      // All table rows must appear in the same chunk (not split mid-table)
       const chunkWithTableStart = chunks.find((c) => c.includes("| Header1 | Header2 |"));
       const chunkWithTableEnd = chunks.find((c) => c.includes("| Row 17 | Data 17 |"));
       expect(chunkWithTableStart).toBeDefined();
@@ -321,7 +375,6 @@ describe("Translate Task", () => {
     });
 
     it("should not split inside a fenced code block", () => {
-      // 290 regular lines, then a code block of 32 lines, then 30 after-code lines = 352 total
       const regularLines = Array.from({ length: 290 }, (_, i) => `Line ${i}`);
       const codeBlock = [
         "```typescript",
@@ -333,7 +386,6 @@ describe("Translate Task", () => {
 
       const chunks = splitIntoChunks(content, 300);
 
-      // Each chunk must have balanced code fences
       for (const chunk of chunks) {
         const chunkLines = chunk.split("\n");
         let depth = 0;
@@ -348,23 +400,16 @@ describe("Translate Task", () => {
       const lines = Array.from({ length: 250 }, (_, i) => `Line ${i}`);
       const content = lines.join("\n");
 
-      // Default (300 lines): 250 lines fits in one chunk
       expect(splitIntoChunks(content)).toHaveLength(1);
 
-      // maxChunkLines=100: 250 lines must produce multiple chunks
       const chunks = splitIntoChunks(content, 100);
       expect(chunks.length).toBeGreaterThan(1);
     });
 
     it("should not infinite-recurse when ### heading is at segment position 0", () => {
-      // Regression: splitAtPositions recursed infinitely when the only ###
-      // heading was at the start of a segment that exceeded maxChunkLines.
-      // This pattern occurs when protectBullets (translate-protected.ts) adds
-      // sentinel lines that push the segment over maxChunkLines.
       const parts: string[] = [];
       parts.push("## Section A");
       parts.push("### Subsection at position 0");
-      // Fill with enough lines to exceed maxChunkLines
       for (let i = 0; i < 350; i++) {
         parts.push(`- Item ${i}: description text here`);
       }
@@ -372,20 +417,15 @@ describe("Translate Task", () => {
       parts.push("Short ending.");
       const content = parts.join("\n");
 
-      // Must complete without stack overflow
       const chunks = splitIntoChunks(content, 300);
       expect(chunks.length).toBeGreaterThan(1);
-      // All content must be preserved
       const rejoined = chunks.join("\n");
       expect(rejoined).toContain("### Subsection at position 0");
       expect(rejoined).toContain("Item 349");
       expect(rejoined).toContain("## Section B");
     });
 
-    it("should handle large files with many headings and bullet sentinels", () => {
-      // Simulates the ngsild.md pattern: many ### headings, code blocks,
-      // and %%LISTITEM%% sentinels from translate-protected.ts
-      const SENTINEL = "%%LISTITEM%%";
+    it("should handle large files with many headings", () => {
       const parts: string[] = [];
       for (let i = 0; i < 20; i++) {
         parts.push(`## API Section ${i}`);
@@ -395,10 +435,7 @@ describe("Translate Task", () => {
           parts.push(`GET /api/v1/resource-${i}-${j}`);
           parts.push("```");
           parts.push(`Description of endpoint ${i}-${j}.`);
-          // Simulate bullet sentinels
-          parts.push(SENTINEL);
           parts.push(`- Parameter a: value`);
-          parts.push(SENTINEL);
           parts.push(`- Parameter b: value`);
           parts.push("```json");
           parts.push(`{"id": "entity-${i}-${j}"}`);
@@ -406,13 +443,10 @@ describe("Translate Task", () => {
         }
       }
       const content = parts.join("\n");
-      // 20 sections × 5 endpoints × ~12 lines = ~1200 lines
 
       const chunks = splitIntoChunks(content, 300);
       expect(chunks.length).toBeGreaterThan(1);
-      // No chunk should exceed maxChunkLines significantly
       for (const chunk of chunks) {
-        // Allow some slack for code blocks that can't be split
         expect(chunk.split("\n").length).toBeLessThan(600);
       }
     });

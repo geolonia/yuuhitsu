@@ -5,13 +5,23 @@ import { tmpdir } from "os";
 import { translateFile } from "../../../src/tasks/translate.js";
 import type { GlossaryConfig } from "../../../src/tasks/glossary.js";
 
-function createMockProvider(responseContent: string) {
+/** Create a JSON-returning mock that echoes text segments back unchanged. */
+function createMockProvider() {
   return {
-    chat: vi.fn().mockResolvedValue({
-      content: responseContent,
-      model: "mock-model",
-      usage: { promptTokens: 100, completionTokens: 200, totalTokens: 300 },
-      finishReason: "end_turn",
+    chat: vi.fn().mockImplementation(async (request: any) => {
+      const userMsg = request.messages.find((m: any) => m.role === "user");
+      let segments: Array<{ id: number; text: string }> = [];
+      try {
+        segments = JSON.parse(userMsg.content).segments ?? [];
+      } catch {
+        // no segments
+      }
+      return {
+        content: JSON.stringify({ translations: segments.map((s) => ({ id: s.id, text: s.text })) }),
+        model: "mock-model",
+        usage: { promptTokens: 100, completionTokens: 200, totalTokens: 300 },
+        finishReason: "end_turn",
+      };
     }),
     chatStream: vi.fn(),
   };
@@ -53,7 +63,7 @@ describe("Translate Task - Glossary Integration", () => {
     const outputPath = join(tempDir, "output.ja.md");
     writeFileSync(inputPath, "# API Reference\n\nThis document describes the API.\n");
 
-    const mockProvider = createMockProvider("# APIリファレンス\n\nこのドキュメントはAPIについて説明します。\n");
+    const mockProvider = createMockProvider();
 
     await translateFile({
       provider: mockProvider,
@@ -77,7 +87,7 @@ describe("Translate Task - Glossary Integration", () => {
     const outputPath = join(tempDir, "output.ja.md");
     writeFileSync(inputPath, "# Webhook Guide\n");
 
-    const mockProvider = createMockProvider("# Webhookガイド\n");
+    const mockProvider = createMockProvider();
 
     await translateFile({
       provider: mockProvider,
@@ -98,7 +108,7 @@ describe("Translate Task - Glossary Integration", () => {
     const outputPath = join(tempDir, "output.ja.md");
     writeFileSync(inputPath, "# Test\n");
 
-    const mockProvider = createMockProvider("# テスト\n");
+    const mockProvider = createMockProvider();
 
     await translateFile({
       provider: mockProvider,
@@ -120,7 +130,7 @@ describe("Translate Task - Glossary Integration", () => {
     const outputPath = join(tempDir, "output.ja.md");
     writeFileSync(inputPath, "# Test\n");
 
-    const mockProvider = createMockProvider("# テスト\n");
+    const mockProvider = createMockProvider();
 
     await translateFile({
       provider: mockProvider,
@@ -136,29 +146,30 @@ describe("Translate Task - Glossary Integration", () => {
     expect(systemMsg.content).toContain("Webhook");
   });
 
-  // NEW-1: fence lang 必須文言が DEFAULT_TEMPLATE に存在すること
-  it("NEW-1: should include code fence lang requirement rule in default template", async () => {
+  // The system prompt should include JSON translation format instructions
+  it("should include JSON translation format instructions in system prompt", async () => {
     const inputPath = join(tempDir, "input.md");
     const outputPath = join(tempDir, "output.ja.md");
     writeFileSync(inputPath, "# Test\n");
 
-    const mockProvider = createMockProvider("# テスト\n");
+    const mockProvider = createMockProvider();
     await translateFile({ provider: mockProvider, inputPath, outputPath, targetLang: "ja" });
 
     const systemMsg = mockProvider.chat.mock.calls[0][0].messages.find(
       (m: any) => m.role === "system",
     );
-    expect(systemMsg.content).toContain("MUST be followed by a language identifier");
-    expect(systemMsg.content).toContain("never emit a bare opening");
+    expect(systemMsg.content).toContain("segments");
+    expect(systemMsg.content).toContain("translations");
+    expect(systemMsg.content).toContain("JSON");
   });
 
-  // NEW-2: warn 強化文言が buildGlossaryPrompt に存在すること
-  it("NEW-2: should include strengthened warn rule when glossary is provided", async () => {
+  // Glossary-provided system prompt should include warn strengthening
+  it("should include strengthened warn rule when glossary is provided", async () => {
     const inputPath = join(tempDir, "input.md");
     const outputPath = join(tempDir, "output.ja.md");
     writeFileSync(inputPath, "# Test\n");
 
-    const mockProvider = createMockProvider("# テスト\n");
+    const mockProvider = createMockProvider();
     await translateFile({
       provider: mockProvider,
       inputPath,
@@ -174,13 +185,13 @@ describe("Translate Task - Glossary Integration", () => {
     expect(systemMsg.content).toContain("regardless of severity");
   });
 
-  // NEW-3: glossary 未設定時に warn 強化文言が出現しないこと
-  it("NEW-3: should not include warn strengthening text when glossaryConfig is undefined", async () => {
+  // Without glossary, warn strengthening text should be absent
+  it("should not include warn strengthening text when glossaryConfig is undefined", async () => {
     const inputPath = join(tempDir, "input.md");
     const outputPath = join(tempDir, "output.ja.md");
     writeFileSync(inputPath, "# Test\n");
 
-    const mockProvider = createMockProvider("# テスト\n");
+    const mockProvider = createMockProvider();
     await translateFile({ provider: mockProvider, inputPath, outputPath, targetLang: "ja" });
 
     const systemMsg = mockProvider.chat.mock.calls[0][0].messages.find(
