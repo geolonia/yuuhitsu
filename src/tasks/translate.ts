@@ -205,10 +205,8 @@ export function restoreBlockBoundaries(content: string): string {
 
   // Pass 2: split + restore newlines
   if (!normalized.includes(BLOCK_BOUNDARY_SENTINEL)) {
-    // No sentinels: unescape any escaped sentinels from original content, then fall through to Layer 3
-    restored = normalized.includes(ESCAPED_SENTINEL)
-      ? normalized.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL)
-      : normalized;
+    // No exact sentinels: fall through to Pass 3 + Layer 3 (handles fully-deleted sentinel case)
+    restored = normalized;
   } else {
     const parts = normalized.split(BLOCK_BOUNDARY_SENTINEL);
     restored = parts[0];
@@ -223,21 +221,22 @@ export function restoreBlockBoundaries(content: string): string {
         restored = restored.replace(/\n?$/, "\n") + stripped;
       }
     }
+  }
 
-    // Pass 3: post-restore warning for patterns not caught by SENTINEL_FALLBACK
-    // Check before unescaping to avoid false positives from user-content <!--BB-->
-    const residuals = restored.match(SENTINEL_RESIDUAL_CHECK);
-    if (residuals && residuals.length > 0) {
-      console.warn(
-        `[yuuhitsu] restoreBlockBoundaries: ${residuals.length} residual sentinel-like pattern(s) detected after restore:`,
-        residuals.slice(0, 5)
-      );
-    }
+  // Pass 3: post-restore warning for patterns not caught by SENTINEL_FALLBACK.
+  // Runs for BOTH the sentinel-present and no-sentinel paths so fully-deformed output
+  // is still flagged. Check before unescaping to avoid false positives from user <!--BB-->.
+  const residuals = restored.match(SENTINEL_RESIDUAL_CHECK);
+  if (residuals && residuals.length > 0) {
+    console.warn(
+      `[yuuhitsu] restoreBlockBoundaries: ${residuals.length} residual sentinel-like pattern(s) detected after restore:`,
+      residuals.slice(0, 5)
+    );
+  }
 
-    // Unescape any pre-existing <!--BB--> that were escaped before protection
-    if (restored.includes(ESCAPED_SENTINEL)) {
-      restored = restored.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL);
-    }
+  // Unescape any pre-existing <!--BB--> that were escaped before protection
+  if (restored.includes(ESCAPED_SENTINEL)) {
+    restored = restored.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL);
   }
 
   // Layer 3 (P-A4 v3): list-aware fallback — detect inline list concatenation that
