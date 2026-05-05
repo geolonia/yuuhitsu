@@ -60,7 +60,7 @@ export class ClaudeProvider implements AIProvider {
 
     const response = await this.client.messages.create({
       model: request.model || this.model,
-      max_tokens: request.maxTokens ?? 4096,
+      max_tokens: request.maxTokens ?? 16384,
       ...(systemMessage ? { system: systemMessage.content } : {}),
       messages: userMessages,
       ...(request.temperature !== undefined
@@ -93,7 +93,7 @@ export class ClaudeProvider implements AIProvider {
 
     const stream = this.client.messages.stream({
       model: request.model || this.model,
-      max_tokens: request.maxTokens ?? 4096,
+      max_tokens: request.maxTokens ?? 16384,
       ...(systemMessage ? { system: systemMessage.content } : {}),
       messages: userMessages,
       ...(request.temperature !== undefined
@@ -122,7 +122,7 @@ export class ClaudeProvider implements AIProvider {
   ): Promise<StructuredTranslateResponse> {
     const response = await this.client.messages.create({
       model: request.model || this.model,
-      max_tokens: request.maxTokens ?? 4096,
+      max_tokens: request.maxTokens ?? 16384,
       system: request.systemPrompt,
       messages: [
         {
@@ -138,6 +138,11 @@ export class ClaudeProvider implements AIProvider {
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
     );
     if (!toolUseBlock) {
+      console.error(
+        `[yuuhitsu] ClaudeProvider.translateStructured: no tool_use block in response` +
+          ` (stop_reason: ${response.stop_reason})` +
+          ` raw response content: ${JSON.stringify(response.content)}`
+      );
       throw new Error(
         `[yuuhitsu] ClaudeProvider.translateStructured: no tool_use block in response` +
           ` (stop_reason: ${response.stop_reason})`
@@ -148,6 +153,10 @@ export class ClaudeProvider implements AIProvider {
       translations?: Array<{ id: number; text: string }>;
     };
     if (!Array.isArray(input.translations)) {
+      console.error(
+        `[yuuhitsu] ClaudeProvider.translateStructured: translations field is missing or not an array.` +
+          ` raw tool_use input: ${JSON.stringify(input)}`
+      );
       throw new Error(
         `[yuuhitsu] ClaudeProvider.translateStructured: translations field is missing or not an array`
       );

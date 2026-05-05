@@ -8,7 +8,7 @@ import type { AIProvider, ChatMessage } from "../provider/interface.js";
 import type { GlossaryConfig } from "./glossary.js";
 import { buildGlossaryPrompt } from "./glossary.js";
 
-export const DEFAULT_MAX_CHUNK_LINES = 300;
+export const DEFAULT_MAX_CHUNK_LINES = 150;
 const MIN_CHUNK_LINES = 50;
 
 // P-A1: minimum ratio of output characters to input characters (truncation check)

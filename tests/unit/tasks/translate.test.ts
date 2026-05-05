@@ -397,12 +397,16 @@ describe("Translate Task", () => {
     });
 
     it("should respect the maxChunkLines parameter", () => {
-      const lines = Array.from({ length: 250 }, (_, i) => `Line ${i}`);
-      const content = lines.join("\n");
+      // 100 lines < DEFAULT_MAX_CHUNK_LINES (150) → single chunk
+      const shortLines = Array.from({ length: 100 }, (_, i) => `Line ${i}`);
+      expect(splitIntoChunks(shortLines.join("\n"))).toHaveLength(1);
 
-      expect(splitIntoChunks(content)).toHaveLength(1);
+      // 250 lines > DEFAULT_MAX_CHUNK_LINES (150) → multiple chunks
+      const longLines = Array.from({ length: 250 }, (_, i) => `Line ${i}`);
+      expect(splitIntoChunks(longLines.join("\n")).length).toBeGreaterThan(1);
 
-      const chunks = splitIntoChunks(content, 100);
+      // explicit max=100: 250 lines → multiple chunks
+      const chunks = splitIntoChunks(longLines.join("\n"), 100);
       expect(chunks.length).toBeGreaterThan(1);
     });
 
