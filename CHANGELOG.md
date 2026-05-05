@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.1.16] - 2026-05-05
+
+### Changed
+- `BLOCK_BOUNDARY_SENTINEL`: `"%%BB%%"` → `"<!--BB-->"` (HTML comment form, LLM deformation-resistant)
+  - HTML comments have strong LLM training prior as "structural elements to preserve verbatim"
+  - Eliminates the LaTeX/Liquid template `%%` reflex that caused `%%BB__` deformation in 0.1.15
+- `restoreBlockBoundaries`: 3-pass strategy for robust variant recovery
+  - Pass 1: normalize LLM-deformed variants via fallback regex (`<!-- BB -->`, `<!--BB__-->`, `<!--BBx-->`, `<!--BB-x-->`, etc.)
+  - Pass 2: split + restore newlines (existing logic, unchanged)
+  - Pass 3: post-restore `console.warn` for residual sentinel-like patterns (silent failure prevention)
+- `buildPrompt`: sentinel preservation instruction updated to `<!--BB-->` with counter-example section
+  - 5 Bad examples (suffix insertion / internal whitespace / case change / deletion / hyphen suffix)
+  - +135 tokens vs 0.1.15 +120 tokens (acceptable delta)
+
+### Added
+- `tests/integration/translate-block-boundaries.real-llm.test.ts`: real LLM integration test (Claude Sonnet 4.6 × 5 fixtures)
+  - Fixture 1: PR#155 list-list newline preservation
+  - Fixture 2: PR#161 macOS/Windows list + 4-backtick fence
+  - Fixture 3: PR#166 3-item JSON list
+  - Fixture 4: PR#161 heading + inline-code + body
+  - Fixture 5: PR#155 hr + heading
+  - Graceful skip when `ANTHROPIC_API_KEY` is not set
+- `.github/workflows/integration-tests.yml`: CI workflow for real LLM tests
+  - Triggers: pull_request (translate.ts + integration tests), workflow_dispatch, weekly schedule (Monday 09:00 UTC)
+  - Runs only when `ANTHROPIC_API_KEY` secret is available
+
+### Tests (8 new unit tests)
+- `translate-block-boundaries.test.ts`: 8 variant detection tests
+  - `<!-- BB -->`, `<!--BB__-->`, `<!--BBx-->`, `<!--BB-x-->`, `<!--  BB  -->` normalized via fallback
+  - Round-trip with `<!-- BB -->` and `<!--BB__-->` variants returns original
+  - Exact sentinel unaffected by fallback pass (no double-processing)
+
+### Migration (0.1.15 → 0.1.16)
+- Sentinel format changed: existing translated docs with `%%BB__` residuals will be re-translated correctly on next sync run
+- `fix-doc-quality.ts` 7 functions maintained (Phase 3 deletion frozen per cmd_389 Q6)
+
+Closes https://github.com/geolonia/yuuhitsu/issues/56
+
 ## [0.1.15] - 2026-05-04
 
 ### Added

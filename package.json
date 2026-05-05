@@ -1,6 +1,6 @@
 {
   "name": "@geolonia/yuuhitsu",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "右筆 (Yuuhitsu) - AI-powered document operations CLI. Translate, generate, and sync documents using Claude, Gemini, or Ollama.",
   "type": "module",
   "bin": {
@@ -12,6 +12,7 @@
     "dev": "tsx src/cli/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run tests/integration/translate-block-boundaries.real-llm.test.ts",
     "lint": "tsc --noEmit"
   },
   "keywords": [
