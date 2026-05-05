@@ -147,21 +147,35 @@ export function protectBlockBoundaries(content: string): string {
   const result: string[] = [];
 
   for (const line of lines) {
-    const isStructural =
-      /^\s*[-*+]\s/.test(line) ||              // unordered list
-      /^\s*\d+\.\s/.test(line) ||               // ordered list
-      /^ {0,3}#{1,6}\s/.test(line) ||           // heading (CommonMark: 0-3 leading spaces)
-      /^ {0,3}-{3,}\s*$/.test(line) ||          // hr (dash, 0-3 leading spaces)
-      /^ {0,3}\*{3,}\s*$/.test(line) ||         // hr (asterisk, 0-3 leading spaces)
-      /^ {0,3}_{3,}\s*$/.test(line) ||           // hr (underscore, 0-3 leading spaces)
-      /^\s*`{3,}/.test(line) ||                 // fenced code (backtick)
-      /^\s*~{3,}/.test(line) ||                 // fenced code (tilde)
-      /^__CODE_BLOCK_\d+__$/.test(line.trim()); // code block placeholder (after protectCodeBlocks)
+    const isListItem =
+      /^\s*[-*+]\s/.test(line) ||   // unordered list
+      /^\s*\d+\.\s/.test(line);     // ordered list
 
-    if (isStructural) {
+    const isOtherStructural =
+      !isListItem && (
+        /^ {0,3}#{1,6}\s/.test(line) ||           // heading (CommonMark: 0-3 leading spaces)
+        /^ {0,3}-{3,}\s*$/.test(line) ||          // hr (dash, 0-3 leading spaces)
+        /^ {0,3}\*{3,}\s*$/.test(line) ||         // hr (asterisk, 0-3 leading spaces)
+        /^ {0,3}_{3,}\s*$/.test(line) ||          // hr (underscore, 0-3 leading spaces)
+        /^\s*`{3,}/.test(line) ||                 // fenced code (backtick)
+        /^\s*~{3,}/.test(line) ||                 // fenced code (tilde)
+        /^__CODE_BLOCK_\d+__$/.test(line.trim())  // code block placeholder (after protectCodeBlocks)
+      );
+
+    if (isListItem) {
+      // P-A4 v3: double sentinel BEFORE each list item to resist LLM collapse.
+      // 0.1.16 used a single sentinel; LLM deleted it and collapsed items to one line.
+      // Two sentinels before each item mean the LLM must delete both to collapse — higher bar.
+      // After-sentinels are intentionally omitted to preserve clean round-trip (no trailing \n).
       result.push(BLOCK_BOUNDARY_SENTINEL);
+      result.push(BLOCK_BOUNDARY_SENTINEL);
+      result.push(line);
+    } else if (isOtherStructural) {
+      result.push(BLOCK_BOUNDARY_SENTINEL);
+      result.push(line);
+    } else {
+      result.push(line);
     }
-    result.push(line);
   }
 
   return result.join("\n");
@@ -169,50 +183,84 @@ export function protectBlockBoundaries(content: string): string {
 
 /**
  * Remove block boundary sentinels and restore newlines lost during LLM translation.
- * Uses a 3-pass strategy:
+ * Uses a 3-pass strategy plus Layer 3 list-aware fallback (P-A4 v3):
  *   Pass 1: normalize LLM-deformed variants (e.g. <!-- BB -->) to exact sentinel form
  *   Pass 2: split + restore newlines (handles both clean and collapsed sentinel cases)
  *   Pass 3: post-restore warning for residual sentinel-like patterns (silent failure prevention)
+ *   Layer 3: detect list items collapsed onto one line ("- A- B") and split them back
+ *            Applied unconditionally — handles the case where LLM deleted ALL sentinels
  */
 export function restoreBlockBoundaries(content: string): string {
   // Pass 1: normalize variant sentinels introduced by LLM deformation (cmd_389 Root Cause A/B)
   const normalized = content.replace(SENTINEL_FALLBACK, BLOCK_BOUNDARY_SENTINEL);
 
+  let restored: string;
+
   // Pass 2: split + restore newlines
   if (!normalized.includes(BLOCK_BOUNDARY_SENTINEL)) {
-    // Still unescape any escaped sentinels from original content
-    return normalized.includes(ESCAPED_SENTINEL)
+    // No sentinels: unescape any escaped sentinels from original content, then fall through to Layer 3
+    restored = normalized.includes(ESCAPED_SENTINEL)
       ? normalized.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL)
       : normalized;
-  }
+  } else {
+    const parts = normalized.split(BLOCK_BOUNDARY_SENTINEL);
+    restored = parts[0];
+    for (let i = 1; i < parts.length; i++) {
+      // Strip a leading newline from next part (present when LLM preserved sentinel on its own line)
+      const stripped = parts[i].replace(/^\n/, "");
+      if (restored.length === 0) {
+        // Sentinel was at the very start of content — no preceding text to separate from
+        restored = stripped;
+      } else {
+        // Ensure restored ends with exactly one newline before appending next part
+        restored = restored.replace(/\n?$/, "\n") + stripped;
+      }
+    }
 
-  const parts = normalized.split(BLOCK_BOUNDARY_SENTINEL);
-  let restored = parts[0];
-  for (let i = 1; i < parts.length; i++) {
-    // Strip a leading newline from next part (present when LLM preserved sentinel on its own line)
-    const stripped = parts[i].replace(/^\n/, "");
-    if (restored.length === 0) {
-      // Sentinel was at the very start of content — no preceding text to separate from
-      restored = stripped;
-    } else {
-      // Ensure restored ends with exactly one newline before appending next part
-      restored = restored.replace(/\n?$/, "\n") + stripped;
+    // Pass 3: post-restore warning for patterns not caught by SENTINEL_FALLBACK
+    // Check before unescaping to avoid false positives from user-content <!--BB-->
+    const residuals = restored.match(SENTINEL_RESIDUAL_CHECK);
+    if (residuals && residuals.length > 0) {
+      console.warn(
+        `[yuuhitsu] restoreBlockBoundaries: ${residuals.length} residual sentinel-like pattern(s) detected after restore:`,
+        residuals.slice(0, 5)
+      );
+    }
+
+    // Unescape any pre-existing <!--BB--> that were escaped before protection
+    if (restored.includes(ESCAPED_SENTINEL)) {
+      restored = restored.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL);
     }
   }
 
-  // Pass 3: post-restore warning for patterns not caught by SENTINEL_FALLBACK
-  // Check before unescaping to avoid false positives from user-content <!--BB-->
-  const residuals = restored.match(SENTINEL_RESIDUAL_CHECK);
-  if (residuals && residuals.length > 0) {
-    console.warn(
-      `[yuuhitsu] restoreBlockBoundaries: ${residuals.length} residual sentinel-like pattern(s) detected after restore:`,
-      residuals.slice(0, 5)
-    );
-  }
+  // Layer 3 (P-A4 v3): list-aware fallback — detect inline list concatenation that
+  // survived Layer 1+2 (LLM joined "- A\n- B" into "- A- B" on a single line).
+  // Applied unconditionally: handles the worst case where ALL sentinels were deleted.
+  // Uses /gm flag: ^ anchors to line start per line (multiline mode).
+  const LIST_INLINE_MERGE_UNORDERED = /(^\s*[-*+]\s[^\n]*?)([-*+]\s)/gm;
+  const LIST_INLINE_MERGE_ORDERED = /(^\s*\d+\.\s[^\n]*?)(\d+\.\s)/gm;
 
-  // Unescape any pre-existing <!--BB--> that were escaped before protection
-  if (restored.includes(ESCAPED_SENTINEL)) {
-    restored = restored.split(ESCAPED_SENTINEL).join(BLOCK_BOUNDARY_SENTINEL);
+  // Apply iteratively: JavaScript replace() scans left-to-right in the original string,
+  // so "- A- B- C" needs two passes (first splits A-B, second splits B-C on the new line).
+  let layer3applied = false;
+  let prev: string;
+  do {
+    prev = restored;
+    restored = restored.replace(LIST_INLINE_MERGE_UNORDERED, (_match, p1, p2) => {
+      layer3applied = true;
+      return `${p1}\n${p2}`;
+    });
+    restored = restored.replace(LIST_INLINE_MERGE_ORDERED, (_match, p1, p2) => {
+      layer3applied = true;
+      return `${p1}\n${p2}`;
+    });
+  } while (restored !== prev);
+
+  if (layer3applied) {
+    console.warn(
+      "[yuuhitsu] restoreBlockBoundaries: Layer 3 list-aware fallback applied — " +
+      "LLM concatenated list items inline. Layer 1+2 sentinels were insufficient."
+    );
   }
 
   return restored;
@@ -321,7 +369,30 @@ function buildPrompt(
       "  - <!--BB-->  ❌ → (omitted)       (deleted — FORBIDDEN)\n" +
       "  - <!--BB-->  ❌ → <!--BB-x-->     (added suffix — FORBIDDEN)\n\n" +
       "Preserve the marker exactly: 9 characters, opening `<!--`, content `BB`,\n" +
-      "closing `-->`, no whitespace, no case changes, no suffixes.";
+      "closing `-->`, no whitespace, no case changes, no suffixes.\n\n" +
+      "## List boundary protection (P-A4 v3 list addendum)\n\n" +
+      "For list items (lines starting with `-`, `*`, `+`, or `1.`),\n" +
+      "`<!--BB-->` markers appear **multiple times in a row** (e.g., two consecutive\n" +
+      "`<!--BB-->` lines). This is intentional — preserve ALL of them.\n\n" +
+      "Bad example (DO NOT do this):\n" +
+      "  <!--BB-->\n" +
+      "  <!--BB-->\n" +
+      "  - Item A\n" +
+      "  <!--BB-->\n" +
+      "  <!--BB-->\n" +
+      "  - Item B\n\n" +
+      "  ❌ becomes: - Item A- Item B   (list items on one line — FORBIDDEN)\n\n" +
+      "Good example (keep each item on its own line):\n" +
+      "  <!--BB-->\n" +
+      "  <!--BB-->\n" +
+      "  - アイテムA\n" +
+      "  <!--BB-->\n" +
+      "  <!--BB-->\n" +
+      "  - アイテムB\n\n" +
+      "Key rules for lists:\n" +
+      "- Each list item MUST remain on its own line.\n" +
+      "- NEVER join two list items into one line (e.g., `- A- B` is FORBIDDEN).\n" +
+      "- Preserve ALL `<!--BB-->` markers, even when they appear consecutively.";
   }
 
   if (hasPlaceholders) {

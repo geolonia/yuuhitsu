@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.1.17] - 2026-05-05
+
+### Changed
+- `protectBlockBoundaries`: list items now get **double sentinel** before AND after (P-A4 v3)
+  - Heading/hr/fence still use single sentinel (unchanged from 0.1.16 — fixture 4-5 PASS)
+  - LLM was treating consecutive single sentinels as "redundant" and deleting them, collapsing list items to one line
+- `restoreBlockBoundaries`: added Layer 3 list-aware fallback
+  - Detects inline list concatenation (`- A- B`) that survived Layer 1+2 protection
+  - Splits back to separate lines via deterministic regex (`/gm` multiline mode)
+  - Emits `console.warn` when applied (silent failure prevention)
+- `buildPrompt`: added list-specific counter-example to P-A4 v3 instructions
+  - Shows "list items joined on one line" as explicit Bad example
+  - Clarifies that consecutive `<!--BB-->` markers are intentional and must be preserved
+  - +115 tokens vs 0.1.16
+
+### Added
+- Integration test fixtures 6-13 (`p-a4-6.input.md` through `p-a4-13.input.md`)
+  - Fixture 6: 2-item simple list (English-only minimal case)
+  - Fixture 7: ordered list (1./2./3.)
+  - Fixture 8: nested list (2 levels deep)
+  - Fixture 9: list + blank line + heading mix
+  - Fixture 10: list + 4-backtick fence (PR#161 complete reproduction)
+  - Fixture 11: long list (10+ items)
+  - Fixture 12: list with inline code in each item
+  - Fixture 13: mixed unordered + ordered list
+- Integration test: 8 new test cases (fixtures 6-13), total 13 fixtures
+
+### Tests (unit)
+- `translate-block-boundaries.test.ts`: updated for double sentinel behavior
+  - `protectBlockBoundaries`: list items produce 2×BB before + 2×BB after
+  - `restoreBlockBoundaries`: Layer 3 fallback tests (unordered, ordered, asterisk, plus)
+  - Round-trip tests: double sentinel protects + restores correctly
+  - False positive tests: prose dashes and nested content not misdetected
+
+### Migration (0.1.16 → 0.1.17)
+- Backward compatible: `restoreBlockBoundaries` correctly handles both 0.1.16 single-sentinel and 0.1.17 double-sentinel output
+- geonicdb-docs: upgrade from 0.1.14 → 0.1.17 (0.1.16 was rolled back via cmd_398)
+
+Closes https://github.com/geolonia/yuuhitsu/issues/62
+
 ## [0.1.16] - 2026-05-05
 
 ### Changed
