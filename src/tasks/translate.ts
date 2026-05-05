@@ -112,11 +112,18 @@ export function protectCodeBlocks(content: string): CodeProtection {
  */
 export function restoreCodeBlocks(content: string, map: Map<string, string>): string {
   let result = content;
-  // Restore fenced code blocks (may have trailing newline added by protect)
   for (const [placeholder, original] of map.entries()) {
-    // The placeholder may appear with or without trailing newline
-    result = result.split(placeholder + "\n").join(original);
-    result = result.split(placeholder).join(original);
+    if (original.endsWith("\n")) {
+      // Fenced code block: original already has trailing \n — just replace, one \n total.
+      result = result.split(placeholder + "\n").join(original);
+      result = result.split(placeholder).join(original);
+    } else {
+      // Inline code: original has NO trailing \n. Preserve any \n that follows the placeholder
+      // so that newlines inserted by restoreBlockBoundaries (Layer 3) are not consumed.
+      // e.g. "__INLINE_CODE_0__\n- next item" → "`code`\n- next item" (not "`code`- next item")
+      result = result.split(placeholder + "\n").join(original + "\n");
+      result = result.split(placeholder).join(original);
+    }
   }
   return result;
 }
