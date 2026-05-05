@@ -71,7 +71,7 @@ export function findHeadingPositions(lines: string[], level: number): number[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (/^`{3,}/.test(line)) inCodeBlock = !inCodeBlock;
+    if (/^(`{3,}|~{3,})/.test(line)) inCodeBlock = !inCodeBlock;
     if (inCodeBlock) continue;
     if (line.startsWith("|")) continue;
     if (line.startsWith(prefix)) positions.push(i);
@@ -125,7 +125,7 @@ export function safeSplitLines(lines: string[], maxChunkLines: number): string[]
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const isFence = /^`{3,}/.test(line);
+    const isFence = /^(`{3,}|~{3,})/.test(line);
     const isTableLine = line.startsWith("|");
 
     const canSplitHere = !inCodeBlock && !isFence && !isTableLine;
@@ -407,6 +407,14 @@ async function translateBatch(
   const parsed = parseTranslationResponse(response.content);
   const translationMap = new Map(parsed.translations.map((t) => [t.id, t.text]));
 
+  // Fail fast if any node IDs are missing (partial JSON response)
+  const missingIds = nodes.filter(({ id }) => !translationMap.has(id)).map(({ id }) => id);
+  if (missingIds.length > 0) {
+    throw new Error(
+      `[yuuhitsu] translateBatch: partial translation — ${missingIds.length} node(s) missing from response (IDs: ${missingIds.join(", ")})`
+    );
+  }
+
   for (const { node, id } of nodes) {
     const translated = translationMap.get(id);
     if (translated !== undefined && translated.trim()) {
@@ -506,11 +514,12 @@ export async function translateFile(
     translatedChunks.push(translatedChunk);
   }
 
-  // Join chunks — trim trailing newlines from each chunk before joining
-  // to avoid double-blank-lines at boundaries
+  // Join chunks: normalize each chunk to exactly one trailing newline
+  // (preserves trailing spaces for Markdown hard line breaks), then join
+  // with a single "\n" so chunk boundaries produce exactly one blank line.
   const translatedBody = translatedChunks
-    .map((c) => c.trimEnd())
-    .join("\n\n");
+    .map((c) => c.replace(/\n+$/, "\n"))
+    .join("\n");
 
   const translatedContent = frontmatter
     ? frontmatter + translatedBody
