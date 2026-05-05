@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-05
+
+### Fixed
+- **[fix] cmd_419 H1 large file hotfix** — `max_tokens` 4096 → 16384 (prevents JSON truncation for large files ≥98KB), `DEFAULT_MAX_CHUNK_LINES` 300 → 150 (reduces per-chunk token load), raw response logging on JSON parse failure (`console.error` before throw)
+
 ## [0.2.0-rc] - 2026-05-05
 
 ### Added
