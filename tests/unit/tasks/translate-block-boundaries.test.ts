@@ -152,6 +152,18 @@ describe("restoreBlockBoundaries", () => {
     const restored = restoreBlockBoundaries(input);
     expect(restored).toBe("item A\nitem B");
   });
+
+  it("LIST_INLINE_MERGE_PLACEHOLDER_UNORDERED: placeholder+hyphen suffix is not a list marker", () => {
+    // "See __INLINE_CODE_0__-X for details" — the hyphen is part of compound expression, not a list bullet
+    const input = "See __INLINE_CODE_0__-X for details";
+    expect(restoreBlockBoundaries(input)).toBe(input);
+  });
+
+  it("LIST_INLINE_MERGE_PLACEHOLDER_UNORDERED: placeholder+numeric suffix is not a list marker", () => {
+    // "Python __INLINE_CODE_0__3.11" — the number is a version suffix, not an ordered list
+    const input = "Python __INLINE_CODE_0__3.11";
+    expect(restoreBlockBoundaries(input)).toBe(input);
+  });
 });
 
 describe("P-A4 full round-trip fixtures", () => {
