@@ -394,6 +394,21 @@ function parseTranslationResponse(raw: string): TranslationResponse {
   }
 }
 
+function assertValidTranslations(value: unknown): asserts value is Segment[] {
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => {
+      if (typeof item !== "object" || item === null) return true;
+      const candidate = item as { id?: unknown; text?: unknown };
+      return typeof candidate.id !== "number" || typeof candidate.text !== "string";
+    })
+  ) {
+    throw new Error(
+      "[yuuhitsu] translateBatch: invalid translation payload — expected Array<{id: number, text: string}>"
+    );
+  }
+}
+
 /**
  * Translate a batch of text segments using the provider.
  *
@@ -426,6 +441,7 @@ async function translateBatch(
     // Structured output path: provider (Claude) enforces JSON schema via tool_use
     const systemPrompt = buildStructuredSystemPrompt(targetLang, templateContent, glossaryConfig);
     const result = await provider.translateStructured({ segments, systemPrompt });
+    assertValidTranslations(result.translations);
     translations = result.translations;
     usage = result.usage;
 
@@ -447,6 +463,7 @@ async function translateBatch(
     const response = await provider.chat({ model: "", messages });
 
     const parsed = parseTranslationResponse(response.content);
+    assertValidTranslations(parsed.translations);
 
     // P-A1: warn on truncation (compare translated text chars, not raw JSON string length)
     const totalOutputChars = parsed.translations.reduce((sum, t) => sum + t.text.length, 0);

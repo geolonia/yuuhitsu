@@ -691,4 +691,24 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
       translateFile({ provider: unexpectedProvider, inputPath, outputPath, targetLang: "ja" })
     ).rejects.toThrow(/unexpected IDs/);
   });
+
+  it("should throw on malformed payload — id is string instead of number (structured path)", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# A\n");
+
+    const malformedProvider = {
+      chat: vi.fn(),
+      chatStream: vi.fn(),
+      translateStructured: vi.fn().mockResolvedValue({
+        // id is a string — invalid payload
+        translations: [{ id: "0", text: "翻訳A" }],
+        usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
+      }),
+    };
+
+    await expect(
+      translateFile({ provider: malformedProvider, inputPath, outputPath, targetLang: "ja" })
+    ).rejects.toThrow(/invalid translation payload/);
+  });
 });
