@@ -250,8 +250,12 @@ export function restoreBlockBoundaries(content: string): string {
   //   (b) Placeholder-end: "- A: __INLINE_CODE_0__-B" — inline code placeholder at end of
   //       previous item followed directly by next list marker (no space). This is the pattern
   //       LLM produces when translating to Japanese (Japanese text has no space after marker).
-  const LIST_INLINE_MERGE_UNORDERED = /(^\s*[-*+]\s[^\n]*?)([-*+]\s)/gm;
-  const LIST_INLINE_MERGE_ORDERED = /(^\s*\d+\.\s[^\n]*?)(\d+\.\s)/gm;
+  // (?<!\s) guard: require the char immediately before the 2nd marker to be non-whitespace.
+  // This prevents false-positive splits on prose like "- Linux - macOS support" where the
+  // inline "- " is preceded by a space (valid prose) rather than collapsed item text.
+  // True collapse ("- A- B") has NO space before the 2nd marker → lookbehind passes.
+  const LIST_INLINE_MERGE_UNORDERED = /(^\s*[-*+]\s[^\n]*?)(?<!\s)([-*+]\s)/gm;
+  const LIST_INLINE_MERGE_ORDERED = /(^\s*\d+\.\s[^\n]*?)(?<!\s)(\d+\.\s)/gm;
   // Placeholder-end pattern: matches code-placeholder end (\d+__) immediately before list marker.
   // Inserts "\n" + space (standard list-item format: "- content") so the new line passes
   // /^\s*[-*+]\s/ checks in integration tests.

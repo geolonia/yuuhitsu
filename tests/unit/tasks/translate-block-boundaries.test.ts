@@ -212,6 +212,16 @@ describe("restoreBlockBoundaries Layer 3 list-aware fallback (P-A4 v3)", () => {
     expect(restoreBlockBoundaries(prose)).toBe(prose);
   });
 
+  it("does not falsely split embedded list-like tokens in list item prose (false positive guard)", () => {
+    // "- Linux - macOS support" — the embedded "- macOS" is preceded by a space;
+    // (?<!\s) lookbehind in LIST_INLINE_MERGE_UNORDERED must prevent this split.
+    const item = "- Linux - macOS support";
+    expect(restoreBlockBoundaries(item)).toBe(item);
+    // Ordered list variant: "1. See 2. Related docs"
+    const ordered = "1. See 2. Related docs";
+    expect(restoreBlockBoundaries(ordered)).toBe(ordered);
+  });
+
   it("does not falsely split inline code containing dashes", () => {
     const code = "- Run `foo-bar --flag` to start";
     // The `--flag` inside backticks is already protected as a placeholder in real pipeline
@@ -242,11 +252,14 @@ describe("restoreBlockBoundaries Layer 3 list-aware fallback (P-A4 v3)", () => {
   });
 
   it("splits placeholder-only list collapse (__INLINE_CODE_0__-__INLINE_CODE_1__-__INLINE_CODE_2__)", () => {
-    // Simulates fixture 12 pattern: list items are entirely inline code placeholders
+    // Simulates fixture 12 pattern: list items are entirely inline code placeholders.
+    // LIST_INLINE_MERGE_PLACEHOLDER_UNORDERED splits `0__-__INLINE_CODE_1` at the `0__-` boundary.
+    // Replacement inserts "\n- " (trailing space) → each placeholder lands on its own "- " line.
     const collapsed = "- __INLINE_CODE_0__-__INLINE_CODE_1__-__INLINE_CODE_2__";
     const restored = restoreBlockBoundaries(collapsed);
-    const lines = restored.split("\n").filter((l) => /^\s*[-*+]/.test(l));
-    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(restored).toBe(
+      "- __INLINE_CODE_0__\n- __INLINE_CODE_1__\n- __INLINE_CODE_2__"
+    );
   });
 });
 

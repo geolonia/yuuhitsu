@@ -3,9 +3,10 @@
 ## [0.1.17] - 2026-05-05
 
 ### Changed
-- `protectBlockBoundaries`: list items now get **double sentinel** before AND after (P-A4 v3)
+- `protectBlockBoundaries`: list items now get **double sentinel before each item** (P-A4 v3)
+  - Trailing sentinels omitted intentionally: avoids spurious trailing `\n` on round-trip
   - Heading/hr/fence still use single sentinel (unchanged from 0.1.16 — fixture 4-5 PASS)
-  - LLM was treating consecutive single sentinels as "redundant" and deleting them, collapsing list items to one line
+  - LLM was treating a single leading sentinel as "redundant" and deleting it, collapsing list items to one line
 - `restoreBlockBoundaries`: added Layer 3 list-aware fallback
   - Detects inline list concatenation (`- A- B`) that survived Layer 1+2 protection
   - Splits back to separate lines via deterministic regex (`/gm` multiline mode)
@@ -29,7 +30,7 @@
 
 ### Tests (unit)
 - `translate-block-boundaries.test.ts`: updated for double sentinel behavior
-  - `protectBlockBoundaries`: list items produce 2×BB before + 2×BB after
+  - `protectBlockBoundaries`: list items produce 2×BB before (trailing omitted by design)
   - `restoreBlockBoundaries`: Layer 3 fallback tests (unordered, ordered, asterisk, plus)
   - Round-trip tests: double sentinel protects + restores correctly
   - False positive tests: prose dashes and nested content not misdetected
