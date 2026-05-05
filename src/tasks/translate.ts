@@ -446,8 +446,10 @@ async function translateBatch(
     ];
     const response = await provider.chat({ model: "", messages });
 
-    // P-A1: warn if output is suspiciously short (truncation check)
-    const totalOutputChars = response.content.length;
+    const parsed = parseTranslationResponse(response.content);
+
+    // P-A1: warn on truncation (compare translated text chars, not raw JSON string length)
+    const totalOutputChars = parsed.translations.reduce((sum, t) => sum + t.text.length, 0);
     if (totalInputChars > 0 && totalOutputChars < totalInputChars * MIN_OUTPUT_RATIO) {
       console.warn(
         `[yuuhitsu] translateBatch: output may be truncated ` +
@@ -455,12 +457,40 @@ async function translateBatch(
       );
     }
 
-    const parsed = parseTranslationResponse(response.content);
     translations = parsed.translations;
     usage = response.usage;
   }
 
-  // Validate 1:1 ID mapping (both paths — structured path enforced by schema + this check)
+  // Validate strict 1:1 ID mapping (both paths):
+  // - no duplicate output IDs (Map silently overwrites; we must detect before)
+  // - no unexpected IDs (IDs not present in the input set)
+  // - no missing IDs (input ID absent from output)
+  const inputIds = new Set(nodes.map(({ id }) => id));
+  const seenOutputIds = new Set<number>();
+  const duplicateIds: number[] = [];
+  const unexpectedIds: number[] = [];
+
+  for (const t of translations) {
+    if (seenOutputIds.has(t.id)) {
+      duplicateIds.push(t.id);
+    } else {
+      seenOutputIds.add(t.id);
+    }
+    if (!inputIds.has(t.id)) {
+      unexpectedIds.push(t.id);
+    }
+  }
+  if (duplicateIds.length > 0) {
+    throw new Error(
+      `[yuuhitsu] translateBatch: duplicate IDs in response (IDs: ${duplicateIds.join(", ")})`
+    );
+  }
+  if (unexpectedIds.length > 0) {
+    throw new Error(
+      `[yuuhitsu] translateBatch: unexpected IDs in response (IDs: ${unexpectedIds.join(", ")})`
+    );
+  }
+
   const translationMap = new Map(translations.map((t) => [t.id, t.text]));
   const missingIds = nodes.filter(({ id }) => !translationMap.has(id)).map(({ id }) => id);
   if (missingIds.length > 0) {

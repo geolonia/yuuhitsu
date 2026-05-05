@@ -645,4 +645,50 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
     expect(result).toContain("typescript");
     expect(result).toContain("タイトル");
   });
+
+  it("should throw on duplicate IDs in response (structured path)", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# A\n\nB\n");
+
+    const duplicateProvider = {
+      chat: vi.fn(),
+      chatStream: vi.fn(),
+      translateStructured: vi.fn().mockResolvedValue({
+        // id 0 appears twice — duplicate
+        translations: [
+          { id: 0, text: "翻訳A" },
+          { id: 0, text: "重複A" },
+        ],
+        usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
+      }),
+    };
+
+    await expect(
+      translateFile({ provider: duplicateProvider, inputPath, outputPath, targetLang: "ja" })
+    ).rejects.toThrow(/duplicate IDs/);
+  });
+
+  it("should throw on unexpected IDs in response (structured path)", async () => {
+    const inputPath = join(tempDir, "input.md");
+    const outputPath = join(tempDir, "output.md");
+    writeFileSync(inputPath, "# A\n");
+
+    const unexpectedProvider = {
+      chat: vi.fn(),
+      chatStream: vi.fn(),
+      translateStructured: vi.fn().mockResolvedValue({
+        // id 999 was never in the input
+        translations: [
+          { id: 0, text: "翻訳A" },
+          { id: 999, text: "幽霊" },
+        ],
+        usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
+      }),
+    };
+
+    await expect(
+      translateFile({ provider: unexpectedProvider, inputPath, outputPath, targetLang: "ja" })
+    ).rejects.toThrow(/unexpected IDs/);
+  });
 });

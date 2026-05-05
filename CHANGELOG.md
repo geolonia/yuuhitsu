@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-05-05
+## [0.2.0-rc] - 2026-05-05
 
 ### Added
 - **[feat] cmd_410 Phase B structured output** — Claude tool_use integration for guaranteed 1:1 ID mapping
