@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-06
+
+### Fixed
+- **[fix] cmd_425 Hotfix 2 — max-nodes-per-batch=200 auto re-split (BUG-421-dense-chunk)**
+  - Dense markdown files (e.g. changelog.md, ~3.7 text nodes/line) could produce chunks with 300+ text nodes, causing Claude structured output to hallucinate out-of-range IDs (`[yuuhitsu] translateBatch: unexpected IDs in response (IDs: 392)`)
+  - `translateFile` now splits text nodes into sub-batches of `maxNodesPerBatch` (default: 200) before calling `translateBatch`; sparse API-docs files (avg 0.7 nodes/line) are unaffected (typically <200 nodes/chunk)
+  - Added `DEFAULT_MAX_NODES_PER_BATCH = 200` constant exported from `translate.ts`
+  - Added `maxNodesPerBatch?: number` field to `TranslateOptions`
+  - Added `--max-nodes-per-batch <number>` CLI option to `yuuhitsu translate`
+  - Added `@types/mdast` to devDependencies (was implicitly required but undeclared, causing `tsc` failures on fresh installs)
+
 ## [0.2.1] - 2026-05-05
 
 ### Fixed

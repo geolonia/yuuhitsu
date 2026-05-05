@@ -22,6 +22,7 @@ export interface BatchTranslateOptions {
   onProgress?: (progress: BatchProgress) => void;
   dryRun: boolean;
   verbose?: boolean;
+  maxNodesPerBatch?: number;
 }
 
 export interface BatchResult {
@@ -135,7 +136,7 @@ function determineInputBase(pattern: string, matchedFiles: string[]): string | u
 export async function batchTranslate(
   opts: BatchTranslateOptions
 ): Promise<BatchResult> {
-  const { pattern, targetLang, provider, outputDir, onProgress, dryRun, verbose } = opts;
+  const { pattern, targetLang, provider, outputDir, onProgress, dryRun, verbose, maxNodesPerBatch } = opts;
 
   // Match files using fast-glob
   const matchedFiles = await fg(pattern, {
@@ -203,6 +204,7 @@ export async function batchTranslate(
           inputPath,
           outputPath,
           targetLang,
+          maxNodesPerBatch,
         });
 
         process.stdout.write(
