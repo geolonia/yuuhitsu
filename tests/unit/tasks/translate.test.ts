@@ -408,6 +408,12 @@ describe("Translate Task", () => {
       // explicit max=100: 250 lines → multiple chunks
       const chunks = splitIntoChunks(longLines.join("\n"), 100);
       expect(chunks.length).toBeGreaterThan(1);
+
+      // >50KB regression guard (H1 acceptance criterion)
+      const bigLine = "A".repeat(300);
+      const hugeContent = Array.from({ length: 200 }, () => bigLine).join("\n"); // ~60KB
+      expect(Buffer.byteLength(hugeContent, "utf8")).toBeGreaterThan(50 * 1024);
+      expect(splitIntoChunks(hugeContent).length).toBeGreaterThan(1);
     });
 
     it("should not infinite-recurse when ### heading is at segment position 0", () => {

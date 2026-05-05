@@ -10,6 +10,17 @@ import type {
 
 const TRANSLATION_TOOL_NAME = "record_translations";
 
+const DEBUG_RAW_STRUCTURED_LOG =
+  process.env.YUUHITSU_DEBUG_RAW_STRUCTURED === "1";
+const MAX_DEBUG_LOG_CHARS = 4000;
+
+function safeDebugPayload(value: unknown): string {
+  const raw = JSON.stringify(value);
+  return raw.length > MAX_DEBUG_LOG_CHARS
+    ? raw.slice(0, MAX_DEBUG_LOG_CHARS) + "...[truncated]"
+    : raw;
+}
+
 const TRANSLATION_TOOL: Anthropic.Tool = {
   name: TRANSLATION_TOOL_NAME,
   description: "Record the translated text segments in structured JSON format",
@@ -138,11 +149,13 @@ export class ClaudeProvider implements AIProvider {
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
     );
     if (!toolUseBlock) {
-      console.error(
-        `[yuuhitsu] ClaudeProvider.translateStructured: no tool_use block in response` +
-          ` (stop_reason: ${response.stop_reason})` +
-          ` raw response content: ${JSON.stringify(response.content)}`
-      );
+      if (DEBUG_RAW_STRUCTURED_LOG) {
+        console.error(
+          `[yuuhitsu] ClaudeProvider.translateStructured: no tool_use block in response` +
+            ` (stop_reason: ${response.stop_reason})` +
+            ` raw response content: ${safeDebugPayload(response.content)}`
+        );
+      }
       throw new Error(
         `[yuuhitsu] ClaudeProvider.translateStructured: no tool_use block in response` +
           ` (stop_reason: ${response.stop_reason})`
@@ -153,10 +166,12 @@ export class ClaudeProvider implements AIProvider {
       translations?: Array<{ id: number; text: string }>;
     };
     if (!Array.isArray(input.translations)) {
-      console.error(
-        `[yuuhitsu] ClaudeProvider.translateStructured: translations field is missing or not an array.` +
-          ` raw tool_use input: ${JSON.stringify(input)}`
-      );
+      if (DEBUG_RAW_STRUCTURED_LOG) {
+        console.error(
+          `[yuuhitsu] ClaudeProvider.translateStructured: translations field is missing or not an array.` +
+            ` raw tool_use input: ${safeDebugPayload(input)}`
+        );
+      }
       throw new Error(
         `[yuuhitsu] ClaudeProvider.translateStructured: translations field is missing or not an array`
       );
