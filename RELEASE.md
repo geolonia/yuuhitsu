@@ -6,7 +6,7 @@ This document describes the standard release procedure for yuuhitsu, including c
 
 All releases use a **canary → monitoring → latest promotion** flow to catch LLM-related failures before they reach all users:
 
-```
+```text
 main merge → npm publish --tag next (canary) → 1-week dogfood → npm dist-tag add ... latest
 ```
 
@@ -29,7 +29,10 @@ Before publishing **any** version:
 ```sh
 # Bump version (do NOT push the tag yet)
 npm version 0.1.X --no-git-tag-version
-git add package.json package-lock.json pnpm-lock.yaml
+git add package.json
+# add whichever lockfile exists
+test -f package-lock.json && git add package-lock.json
+test -f pnpm-lock.yaml && git add pnpm-lock.yaml
 git commit -m "chore: bump to 0.1.X"
 
 # Create and push the tag

@@ -57,7 +57,7 @@ When adding new sentinel patterns or modifying LLM transformation logic, verify 
 | Structure | Status | Fixture(s) |
 |---|---|---|
 | single element | ✅ | p-a4-6 (2-item list) |
-| consecutive same-kind | ✅ | p-a4-9 (consecutive headings), p-a4-11 (long list) |
+| consecutive same-kind | ✅ | p-a4-9 (heading-bracketed list), p-a4-11 (long list) |
 | adjacent different-kind | ✅ | p-a4-2 (list + fence), p-a4-5 (hr + heading) |
 | nested | ✅ | p-a4-8 (2-level nested list) |
 | 3+ level nested | ⚠️ missing | — |

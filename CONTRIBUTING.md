@@ -28,7 +28,7 @@ Changes that touch any of the following require Phase 0:
 ### Phase 0 PoC Procedure
 
 1. **Design hypothesis**: State the expected LLM behaviour for the proposed change
-2. **Select fixtures**: Choose at least 3 fixtures covering the affected patterns (use the [fixture 4-axis checklist](#fixture-4-axis-coverage-checklist) in `tests/INTEGRATION_TESTS.md`)
+2. **Select fixtures**: Choose at least 3 fixtures covering the affected patterns (use the [fixture 4-axis checklist](tests/INTEGRATION_TESTS.md#fixture-4-axis-coverage-checklist))
 3. **Run PoC**: Execute real API calls against Claude Sonnet 4.6 (minimum):
 
    ```sh
