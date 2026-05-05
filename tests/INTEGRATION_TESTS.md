@@ -16,7 +16,7 @@ npm run test:integration
 
 If `ANTHROPIC_API_KEY` is not set, the test suite will **fail** (not skip) with:
 
-```
+```text
 Error: ANTHROPIC_API_KEY is required for integration tests.
 ```
 
