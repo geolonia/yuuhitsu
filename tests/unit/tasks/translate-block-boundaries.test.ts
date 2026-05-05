@@ -218,6 +218,28 @@ describe("restoreBlockBoundaries Layer 3 list-aware fallback (P-A4 v3)", () => {
     // Layer 3 regex: the `--` inside doesn't start a new list item (no whitespace after -)
     expect(restoreBlockBoundaries(code)).toBe(code);
   });
+
+  it("does not falsely split hyphenated words in list items (false positive guard)", () => {
+    const item = "- first-person narrative";
+    // No \d+__ placeholder before hyphen → should NOT split
+    expect(restoreBlockBoundaries(item)).toBe(item);
+  });
+
+  it("splits placeholder-end no-space collapse (- item: __INLINE_CODE_0__-次の項目)", () => {
+    // Simulates LLM collapsing "- item: __INLINE_CODE_0__\n- 次の項目: __INLINE_CODE_1__"
+    // into one line without space (common in Japanese translation)
+    const collapsed = "- item: __INLINE_CODE_0__-次の項目: __INLINE_CODE_1__";
+    const restored = restoreBlockBoundaries(collapsed);
+    expect(restored).toBe("- item: __INLINE_CODE_0__\n-次の項目: __INLINE_CODE_1__");
+  });
+
+  it("splits placeholder-only list collapse (__INLINE_CODE_0__-__INLINE_CODE_1__-__INLINE_CODE_2__)", () => {
+    // Simulates fixture 12 pattern: list items are entirely inline code placeholders
+    const collapsed = "- __INLINE_CODE_0__-__INLINE_CODE_1__-__INLINE_CODE_2__";
+    const restored = restoreBlockBoundaries(collapsed);
+    const lines = restored.split("\n").filter((l) => /^\s*[-*+]/.test(l));
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+  });
 });
 
 describe("restoreBlockBoundaries variant detection (3-pass fallback regex)", () => {

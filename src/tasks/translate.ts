@@ -237,8 +237,19 @@ export function restoreBlockBoundaries(content: string): string {
   // survived Layer 1+2 (LLM joined "- A\n- B" into "- A- B" on a single line).
   // Applied unconditionally: handles the worst case where ALL sentinels were deleted.
   // Uses /gm flag: ^ anchors to line start per line (multiline mode).
+  //
+  // Two sub-patterns:
+  //   (a) Spaced: "- A- B" or "- A -  B" — requires whitespace after 2nd marker (original).
+  //   (b) Placeholder-end: "- A: __INLINE_CODE_0__-B" — inline code placeholder at end of
+  //       previous item followed directly by next list marker (no space). This is the pattern
+  //       LLM produces when translating to Japanese (Japanese text has no space after marker).
   const LIST_INLINE_MERGE_UNORDERED = /(^\s*[-*+]\s[^\n]*?)([-*+]\s)/gm;
   const LIST_INLINE_MERGE_ORDERED = /(^\s*\d+\.\s[^\n]*?)(\d+\.\s)/gm;
+  // Placeholder-end pattern: matches code-placeholder end (\d+__) immediately before list marker
+  // e.g. "__INLINE_CODE_0__-次の項目" → "__INLINE_CODE_0__\n-次の項目"
+  // Safe: \d+__ is specific to yuuhitsu placeholder format; false positive risk is minimal.
+  const LIST_INLINE_MERGE_PLACEHOLDER_UNORDERED = /(\d+__)([-*+])/gm;
+  const LIST_INLINE_MERGE_PLACEHOLDER_ORDERED = /(\d+__)(\d+\.)/gm;
 
   // Apply iteratively: JavaScript replace() scans left-to-right in the original string,
   // so "- A- B- C" needs two passes (first splits A-B, second splits B-C on the new line).
@@ -251,6 +262,14 @@ export function restoreBlockBoundaries(content: string): string {
       return `${p1}\n${p2}`;
     });
     restored = restored.replace(LIST_INLINE_MERGE_ORDERED, (_match, p1, p2) => {
+      layer3applied = true;
+      return `${p1}\n${p2}`;
+    });
+    restored = restored.replace(LIST_INLINE_MERGE_PLACEHOLDER_UNORDERED, (_match, p1, p2) => {
+      layer3applied = true;
+      return `${p1}\n${p2}`;
+    });
+    restored = restored.replace(LIST_INLINE_MERGE_PLACEHOLDER_ORDERED, (_match, p1, p2) => {
       layer3applied = true;
       return `${p1}\n${p2}`;
     });
@@ -392,7 +411,15 @@ function buildPrompt(
       "Key rules for lists:\n" +
       "- Each list item MUST remain on its own line.\n" +
       "- NEVER join two list items into one line (e.g., `- A- B` is FORBIDDEN).\n" +
-      "- Preserve ALL `<!--BB-->` markers, even when they appear consecutively.";
+      "- Preserve ALL `<!--BB-->` markers, even when they appear consecutively.\n\n" +
+      "Bad example (DO NOT do this) — inline code list collapse:\n" +
+      "  - Item A: `value 1`\n" +
+      "  - Item B: `value 2`\n\n" +
+      "  ❌ becomes: - Item A: `value 1`- Item B: `value 2`    (FORBIDDEN, space before marker)\n" +
+      "  ❌ becomes: - Item A: `value 1`-Item B: `value 2`     (FORBIDDEN, no space)\n\n" +
+      "Good example: each list item must remain on its own line, even when items contain inline code:\n" +
+      "  - アイテムA: `value 1`\n" +
+      "  - アイテムB: `value 2`";
   }
 
   if (hasPlaceholders) {
