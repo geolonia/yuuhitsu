@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `CONTRIBUTING.md`: Phase 0 PoC step mandatory flow for LLM-related changes
+- `RELEASE.md`: canary release process documentation (npm tag `next` → 1-week dogfood → `latest` promotion, rollback procedure, post-mortem template)
+- `tests/INTEGRATION_TESTS.md`: fixture 4-axis coverage checklist (content / structure / size / marker kind) with 25+ category matrix and 12 identified missing fixture categories (P0/P1/P2 prioritized)
+- `package.json`: added `publishConfig` with `access: public` and registry configuration
+
 ## [0.1.17] - 2026-05-05
 
 ### Changed
