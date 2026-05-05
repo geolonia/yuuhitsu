@@ -43,21 +43,21 @@ describeTest(
       return { input, output };
     }
 
-    function assertStructuralIntegrity(output: string, context: string): void {
-      // No sentinel or variant patterns in restored output
+    function assertStructuralIntegrity(input: string, output: string, context: string): void {
+      // No sentinel or variant patterns (including lowercase) in restored output
       expect(output, `${context}: should not contain <!--BB--> sentinel after restore`).not.toMatch(
-        /<!--BB-->/
+        /<!--BB-->/i
       );
       expect(output, `${context}: should not contain sentinel variants after restore`).not.toMatch(
-        /<!--\s*BB[a-zA-Z0-9_-]*\s*-->/
+        /<!--\s*BB[a-zA-Z0-9_-]*\s*-->/i
       );
 
-      // Translation completed — output should be non-empty with reasonable length
+      // Translation completed — output should be non-empty and at least 30% of input length
       expect(output.trim().length, `${context}: output should be non-empty`).toBeGreaterThan(0);
       expect(
         output.length,
         `${context}: output should be at least 30% of input length`
-      ).toBeGreaterThan(0);
+      ).toBeGreaterThanOrEqual(Math.ceil(input.length * 0.3));
     }
 
     it(
@@ -65,7 +65,7 @@ describeTest(
       async () => {
         const { input, output } = await runTranslation("p-a4-1");
 
-        assertStructuralIntegrity(output, "fixture 1");
+        assertStructuralIntegrity(input, output, "fixture 1");
 
         // List items should be on separate lines
         const listLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
@@ -80,9 +80,9 @@ describeTest(
     it(
       "fixture 2 (PR#161): macOS/Windows list + 4-backtick fence boundary preserved",
       async () => {
-        const { output } = await runTranslation("p-a4-2");
+        const { input, output } = await runTranslation("p-a4-2");
 
-        assertStructuralIntegrity(output, "fixture 2");
+        assertStructuralIntegrity(input, output, "fixture 2");
 
         // List items on separate lines
         const listLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
@@ -97,9 +97,9 @@ describeTest(
     it(
       "fixture 3 (PR#166): 3-item JSON list newlines preserved",
       async () => {
-        const { output } = await runTranslation("p-a4-3");
+        const { input, output } = await runTranslation("p-a4-3");
 
-        assertStructuralIntegrity(output, "fixture 3");
+        assertStructuralIntegrity(input, output, "fixture 3");
 
         // 3 list items on separate lines
         const listLines = output.split("\n").filter((l) => /^\s*[-*+]\s/.test(l));
@@ -111,9 +111,9 @@ describeTest(
     it(
       "fixture 4 (PR#161): heading + inline-code + body structure preserved",
       async () => {
-        const { output } = await runTranslation("p-a4-4");
+        const { input, output } = await runTranslation("p-a4-4");
 
-        assertStructuralIntegrity(output, "fixture 4");
+        assertStructuralIntegrity(input, output, "fixture 4");
 
         // At least one heading on its own line
         const headingLines = output.split("\n").filter((l) => /^ {0,3}#{1,6}\s/.test(l));
@@ -125,9 +125,9 @@ describeTest(
     it(
       "fixture 5 (PR#155): hr + heading boundary preserved",
       async () => {
-        const { output } = await runTranslation("p-a4-5");
+        const { input, output } = await runTranslation("p-a4-5");
 
-        assertStructuralIntegrity(output, "fixture 5");
+        assertStructuralIntegrity(input, output, "fixture 5");
 
         // Horizontal rule on its own line
         const hrLines = output.split("\n").filter((l) => /^ {0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(l));

@@ -138,10 +138,10 @@ const SENTINEL_RESIDUAL_CHECK = /<!--[\s\S]*?BB[\s\S]*?-->/g;
  * the function treats those placeholders as structural to protect fence-adjacent newlines.
  */
 export function protectBlockBoundaries(content: string): string {
-  // Escape any pre-existing <!--BB--> so they are not confused with control sentinels
-  const escaped = content.includes(BLOCK_BOUNDARY_SENTINEL)
-    ? content.split(BLOCK_BOUNDARY_SENTINEL).join(ESCAPED_SENTINEL)
-    : content;
+  // Escape all sentinel-like patterns (exact + variants) to prevent control-marker confusion.
+  // SENTINEL_FALLBACK covers <!--BB-->, <!-- BB -->, <!--BBx-->, <!--BB-x-->, etc.
+  // On restore, these all round-trip back to <!--BB--> (minor cosmetic vs. content deletion).
+  const escaped = content.replace(SENTINEL_FALLBACK, ESCAPED_SENTINEL);
 
   const lines = escaped.split("\n");
   const result: string[] = [];
