@@ -321,6 +321,107 @@ terms:
       });
     });
 
+    describe("inline code skip — block tier and warn tier (package name false positives)", () => {
+      let blockGlossaryPath: string;
+      let warnGlossaryPath: string;
+
+      beforeEach(() => {
+        // severity: block term (GeonicDB / geonicdb)
+        blockGlossaryPath = join(tempDir, "glossary-block.yaml");
+        writeFileSync(
+          blockGlossaryPath,
+          `version: 1
+languages: [ja, en]
+terms:
+  - canonical: "GeonicDB"
+    type: brand
+    translations:
+      ja: "GeonicDB"
+      en: "GeonicDB"
+    severity: block
+    do_not_use:
+      ja: ["geonicdb", "ジオニックDB"]
+      en: ["geonicdb"]
+`
+        );
+        // severity: warn term (same term without explicit severity)
+        warnGlossaryPath = join(tempDir, "glossary-warn.yaml");
+        writeFileSync(
+          warnGlossaryPath,
+          `version: 1
+languages: [ja, en]
+terms:
+  - canonical: "GeonicDB"
+    type: brand
+    translations:
+      ja: "GeonicDB"
+      en: "GeonicDB"
+    severity: warn
+    do_not_use:
+      ja: ["geonicdb", "ジオニックDB"]
+      en: ["geonicdb"]
+`
+        );
+      });
+
+      it("should not flag block-tier term inside inline code (npm package name)", () => {
+        const docPath = join(tempDir, "doc-block-inline.md");
+        writeFileSync(docPath, "Install `@geolonia/geonicdb-sdk` to get started.\n");
+        const issues = checkGlossary(docPath, blockGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag block-tier term inside inline code in Japanese", () => {
+        const docPath = join(tempDir, "doc-block-inline-ja.md");
+        writeFileSync(docPath, "`@geolonia/geonicdb-sdk` パッケージをインストールしてください。\n");
+        const issues = checkGlossary(docPath, blockGlossaryPath, "ja");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag block-tier term inside fenced code block", () => {
+        const docPath = join(tempDir, "doc-block-fenced.md");
+        writeFileSync(
+          docPath,
+          "```ts\nconst client = new geonicdb.Client();\n```\n"
+        );
+        const issues = checkGlossary(docPath, blockGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should still flag block-tier term in plain text", () => {
+        const docPath = join(tempDir, "doc-block-plain.md");
+        writeFileSync(docPath, "Use geonicdb to connect.\n");
+        const issues = checkGlossary(docPath, blockGlossaryPath, "en");
+        expect(issues).toHaveLength(1);
+        expect(issues[0].severity).toBe("block");
+        expect(issues[0].forbidden).toBe("geonicdb");
+      });
+
+      it("should not flag warn-tier term inside inline code", () => {
+        const docPath = join(tempDir, "doc-warn-inline.md");
+        writeFileSync(docPath, "Install `geonicdb-sdk` via npm.\n");
+        const issues = checkGlossary(docPath, warnGlossaryPath, "en");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag warn-tier term inside inline code in Japanese", () => {
+        const docPath = join(tempDir, "doc-warn-inline-ja.md");
+        writeFileSync(docPath, "`geonicdb.d.ts` 型定義ファイルを参照してください。\n");
+        const issues = checkGlossary(docPath, warnGlossaryPath, "ja");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should handle multiple inline codes on one line (block tier)", () => {
+        const docPath = join(tempDir, "doc-block-multi-inline.md");
+        writeFileSync(
+          docPath,
+          "`@geolonia/geonicdb-sdk` と `geonicdb.d.ts` が含まれます。\n"
+        );
+        const issues = checkGlossary(docPath, blockGlossaryPath, "ja");
+        expect(issues).toHaveLength(0);
+      });
+    });
+
     describe("Markdown link URL path exclusion", () => {
       let linkGlossaryPath: string;
 
