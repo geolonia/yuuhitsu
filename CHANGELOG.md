@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-05-06
+
+### Fixed
+- **[fix] cmd_430 Hotfix 3 — glossary check skips inline code and code block contents**
+  - `checkGlossary` was incorrectly flagging package names (e.g. `` `@geolonia/geonicdb-sdk` ``), file names (e.g. `` `geonicdb.d.ts` ``), and other technical identifiers inside inline code as glossary violations
+  - Root cause: glossary check (block tier + warn tier) did not exclude inline code (`` `...` ``) contents from detection — package names must remain lowercase in code contexts
+  - Fix: inline code contents are stripped from each line before glossary term matching (fenced code blocks were already excluded via `inFencedBlock` tracking)
+  - Added unit tests for block-tier and warn-tier terms inside inline code, including Japanese translations of npm package names
+  - Closes #80
+
 ## [0.2.2] - 2026-05-06
 
 ### Fixed
