@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-05-06
+
+### Fixed
+- **[fix] cmd_434 — glossary check skips fenced code block contents (explicit test coverage)**
+  - `checkGlossary` already excluded fenced code block (`` ``` ``...`` ``` ``) contents via `inFencedBlock` tracking since 0.1.12; this release adds explicit test coverage for the real-world failure case
+  - Root cause of CI failure (geonicdb-docs PR#204): `` ```json `` fenced blocks containing JSON keys (e.g. `"geonicdb"` in `mcpServers` config) were flagged as block-tier glossary violations by older published versions
+  - Added unit tests: `"should not flag block-tier JSON key inside ```json fenced block (Japanese)"` and `"should not flag warn-tier term inside fenced code block (Japanese)"` — covers the exact CI failure scenario
+  - Closes #84
+
 ## [0.2.3] - 2026-05-06
 
 ### Fixed

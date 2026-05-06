@@ -388,6 +388,27 @@ terms:
         expect(issues).toHaveLength(0);
       });
 
+      it("should not flag block-tier JSON key inside ```json fenced block (Japanese)", () => {
+        // Reproduces CI failure: ai-integration/*.md L253 mcpServers JSON key "geonicdb"
+        const docPath = join(tempDir, "doc-block-fenced-json-ja.md");
+        writeFileSync(
+          docPath,
+          '```json\n{\n  "mcpServers": {\n    "geonicdb": {\n      "command": "npx"\n    }\n  }\n}\n```\n'
+        );
+        const issues = checkGlossary(docPath, blockGlossaryPath, "ja");
+        expect(issues).toHaveLength(0);
+      });
+
+      it("should not flag warn-tier term inside fenced code block (Japanese)", () => {
+        const docPath = join(tempDir, "doc-warn-fenced-ja.md");
+        writeFileSync(
+          docPath,
+          "```json\n{\n  \"key\": \"geonicdb\"\n}\n```\n"
+        );
+        const issues = checkGlossary(docPath, warnGlossaryPath, "ja");
+        expect(issues).toHaveLength(0);
+      });
+
       it("should still flag block-tier term in plain text", () => {
         const docPath = join(tempDir, "doc-block-plain.md");
         writeFileSync(docPath, "Use geonicdb to connect.\n");
