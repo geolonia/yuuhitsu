@@ -28,6 +28,7 @@
     "dist",
     "src/templates",
     "README.md",
+    "README.ja.md",
     "LICENSE"
   ],
   "dependencies": {
