@@ -13,7 +13,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "local-qc": "tsx scripts/local-qc.ts",
+    "prepublishOnly": "tsx scripts/local-qc.ts"
   },
   "keywords": [
     "ai",
