@@ -103,13 +103,14 @@ describe("Code block preservation (AST-based)", () => {
     expect(output).toContain("echo 'hello'");
   });
 
-  it("should preserve inline code in the output", async () => {
+  it("should preserve inline code in the output (paragraph-level: whole sentence as one segment)", async () => {
     const inputContent = "Use `const x = 1` and `let y = 2` in TypeScript.";
 
+    // 0.3.0 paragraph-level: the whole paragraph is ONE segment, not fragmented.
+    // Mock maps the whole markdown paragraph to a translated version.
     const provider = createJsonMockProvider({
-      "Use ": "TypeScriptでは",
-      " and ": "と",
-      " in TypeScript.": "を使います。",
+      "Use `const x = 1` and `let y = 2` in TypeScript.":
+        "TypeScriptでは `const x = 1` と `let y = 2` を使います。",
     });
 
     const inputPath = join(tempDir, "test.md");
@@ -120,16 +121,16 @@ describe("Code block preservation (AST-based)", () => {
 
     const output = readFileSync(outputPath, "utf-8");
 
-    // Inline code must be preserved
+    // Inline code must be preserved in output
     expect(output).toContain("`const x = 1`");
     expect(output).toContain("`let y = 2`");
 
-    // Inline code content must NOT appear in LLM segments
+    // 0.3.0: the whole paragraph is sent as ONE segment (no fragmentation)
     const callArg = (provider.chat as any).mock.calls[0][0];
     const segments = JSON.parse(callArg.messages.find((m: any) => m.role === "user").content).segments ?? [];
-    const texts = segments.map((s: any) => s.text).join(" ");
-    expect(texts).not.toContain("const x = 1");
-    expect(texts).not.toContain("let y = 2");
+    expect(segments).toHaveLength(1);
+    // The segment contains the full markdown paragraph including inline code with backticks
+    expect(segments[0].text).toBe("Use `const x = 1` and `let y = 2` in TypeScript.");
   });
 
   it("should preserve Japanese comments inside code blocks unchanged", async () => {

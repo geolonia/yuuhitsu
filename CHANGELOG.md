@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-10
+
+### Changed (Breaking)
+- **[feat] cmd_453 Part A — paragraph-level chunk redesign (`extractBlockNodes`) for 0.3.0**
+  - Root cause of EN/JA mixing in 0.2.x: `extractTextNodes()` split paragraphs at inline-code/emphasis boundaries, causing LLM context loss → EN/JA mixing, duplicate phrases, semantic inversion (17 issues found in PR#210)
+  - Example: `"When \`AUTH_ENABLED=true\`, a token is required."` was split into `"When "` + `", a token is required."` → LLM had no context for each fragment
+  - **`extractTextNodes()` removed** — replaced by `extractBlockNodes()` which extracts paragraph and heading nodes as whole markdown units (inline code, bold, italic, links preserved within the block)
+  - **`DEFAULT_MAX_NODES_PER_BATCH` removed** — replaced by `DEFAULT_MAX_TOKENS_PER_BATCH = 4000` (token-count-based batching: `chars / 4` approximation)
+  - **`maxNodesPerBatch` option renamed to `maxTokensPerBatch`** in `TranslateOptions`, `BatchTranslateOptions`, and CLI flag (`--max-tokens-per-batch`)
+  - System prompts updated: explicit instructions to preserve inline markdown formatting and treat each block as an independent paragraph-level unit
+  - LLM output re-parsed through remark and written back to AST (`applyTranslation` closure per block)
+
 ## [0.2.4] - 2026-05-06
 
 ### Fixed

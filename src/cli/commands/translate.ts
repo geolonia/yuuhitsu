@@ -14,7 +14,7 @@ export const translateCommand = new Command("translate")
   .option("--output <file>", "Output file path (default: <input>.<lang>.md)")
   .option("--output-dir <dir>", "Output directory for batch translation (preserves directory structure)")
   .option("--max-chunk-lines <number>", "Maximum lines per translation chunk (default: 300)", parseInt)
-  .option("--max-nodes-per-batch <number>", "Maximum text nodes per API batch call (default: 200)", parseInt)
+  .option("--max-tokens-per-batch <number>", "Maximum estimated tokens per API batch call (default: 4000)", parseInt)
   .action(async (opts, cmd) => {
     const globalOpts = cmd.parent?.opts() ?? {};
     const configPath: string = globalOpts.config ?? "./yuuhitsu.config.yaml";
@@ -55,7 +55,7 @@ export const translateCommand = new Command("translate")
           outputDir: opts.outputDir,
           dryRun,
           verbose,
-          maxNodesPerBatch: opts.maxNodesPerBatch,
+          maxTokensPerBatch: opts.maxTokensPerBatch,
         });
       } else {
         // Single file translation mode (original behavior)
@@ -92,7 +92,7 @@ export const translateCommand = new Command("translate")
           outputPath: opts.output,
           targetLang: opts.lang,
           maxChunkLines: opts.maxChunkLines,
-          maxNodesPerBatch: opts.maxNodesPerBatch,
+          maxTokensPerBatch: opts.maxTokensPerBatch,
         });
 
         process.stdout.write(
