@@ -8,11 +8,20 @@ export function checkHeadingIntegrity(jaFiles: string[]): CheckResult {
     if (!fs.existsSync(filePath)) continue;
     const lines = fs.readFileSync(filePath, "utf-8").split("\n");
     let inFence = false;
+    let fenceMarker = "";
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (/^(`{3,}|~{3,})/.test(line)) {
-        inFence = !inFence;
+      const fence = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+      if (fence) {
+        const marker = fence[1][0];
+        if (!inFence) {
+          inFence = true;
+          fenceMarker = marker;
+        } else if (marker === fenceMarker) {
+          inFence = false;
+          fenceMarker = "";
+        }
         continue;
       }
       if (inFence) continue;

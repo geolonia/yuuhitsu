@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import type { CheckResult } from "../types.js";
@@ -31,12 +31,21 @@ export function checkMarkdownlint(
   const configPath = path.resolve(fixtureRepo, ".markdownlint-qc.json");
   try {
     fs.writeFileSync(configPath, JSON.stringify(LENIENT_CONFIG, null, 2));
-    const fileArgs = existing.map((f) => `"${path.resolve(f)}"`).join(" ");
-    execSync(
-      `npx --yes markdownlint-cli2 --config "${configPath}" ${fileArgs}`,
-      { stdio: "pipe", timeout: 60_000 }
-    );
-    return { name: "markdownlint", passed: true, violations: [] };
+    const args = [
+      "--yes",
+      "markdownlint-cli2",
+      "--config",
+      configPath,
+      ...existing.map((f) => path.resolve(f)),
+    ];
+    const result = spawnSync("npx", args, {
+      stdio: "pipe",
+      timeout: 60_000,
+    });
+    if (result.status === 0) {
+      return { name: "markdownlint", passed: true, violations: [] };
+    }
+    throw { stdout: result.stdout, stderr: result.stderr };
   } catch (err: unknown) {
     const e = err as { stdout?: Buffer; stderr?: Buffer };
     const output = (e.stdout?.toString() ?? "") + (e.stderr?.toString() ?? "");

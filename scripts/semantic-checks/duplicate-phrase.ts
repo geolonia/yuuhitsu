@@ -1,6 +1,20 @@
 import fs from "fs";
 import type { CheckResult } from "../types.js";
 
+// Known duplicate paragraphs from source docs (Issue#88) — not translation quality issues
+// Match by file pattern + text snippet to skip entire paragraphs with expected repeated patterns
+const KNOWN_DUPLICATE_PARAGRAPHS: Array<{ filePattern: string; textSnippet: string }> = [
+  // NGSIv2 + NGSI-LD cache-control endpoint list: "リスト / 単一 / attrs" appears in both API paths
+  { filePattern: "api-reference/endpoints.md", textSnippet: "リスト / 単一 / attrs" },
+];
+
+function isKnownDuplicateParagraph(filePath: string, text: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/");
+  return KNOWN_DUPLICATE_PARAGRAPHS.some(
+    (e) => normalized.includes(e.filePattern) && text.includes(e.textSnippet)
+  );
+}
+
 function stripFrontmatter(content: string): string {
   if (!content.startsWith("---")) return content;
   const end = content.indexOf("\n---", 3);
@@ -88,6 +102,7 @@ export function checkDuplicatePhrase(jaFiles: string[]): CheckResult {
     const paragraphs = extractParagraphs(content);
 
     for (const { text, startLine } of paragraphs) {
+      if (isKnownDuplicateParagraph(filePath, text)) continue;
       const words = text.split(/\s+/).filter(Boolean);
       if (words.length < 4) continue;
 

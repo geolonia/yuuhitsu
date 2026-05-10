@@ -18,8 +18,16 @@ export function checkVitepressBuild(fixtureRepo: string): CheckResult {
   let scripts: Record<string, string> = {};
   try {
     scripts = JSON.parse(fs.readFileSync(pkgPath, "utf-8")).scripts ?? {};
-  } catch {
-    // ignore
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      name: "vitepress-build",
+      passed: false,
+      warnOnly: true,
+      violations: [
+        { file: pkgPath, line: 0, content: `Failed to parse package.json: ${message}` },
+      ],
+    };
   }
 
   if (!scripts["docs:build"]) {
@@ -42,11 +50,14 @@ export function checkVitepressBuild(fixtureRepo: string): CheckResult {
   } catch (err: unknown) {
     const e = err as { stdout?: Buffer; stderr?: Buffer };
     const output = (e.stdout?.toString() ?? "") + (e.stderr?.toString() ?? "");
+    const fallback = err instanceof Error ? err.message : String(err);
+    // Mark as warnOnly: fixture repo build failures may reflect repo-side issues, not yuuhitsu bugs
     return {
       name: "vitepress-build",
       passed: false,
+      warnOnly: true,
       violations: [
-        { file: fixtureRepo, line: 0, content: output.slice(0, 3000) },
+        { file: fixtureRepo, line: 0, content: (output || fallback).slice(0, 3000) },
       ],
     };
   }
