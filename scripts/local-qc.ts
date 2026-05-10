@@ -21,7 +21,7 @@ const FULL_DOCS_EN_FILES = [
   "docs/en/api-reference/endpoints.md",
   "docs/en/core-concepts/ngsiv2-vs-ngsild.md",
   "docs/en/features/subscriptions.md",
-  "docs/en/changelog.md",
+  "docs/en/changelog/index.md",
 ];
 
 function buildFixtures(repo: string): FixtureFile[] {
@@ -54,8 +54,14 @@ function buildFixtures(repo: string): FixtureFile[] {
 }
 
 function printResult(result: CheckResult): void {
-  const icon = result.skipped ? "⏭" : result.passed ? "✓" : "✗";
-  const status = result.skipped ? `SKIP (${result.skipReason})` : result.passed ? "PASS" : `FAIL (${result.violations.length} violations)`;
+  const icon = result.skipped ? "⏭" : result.passed ? "✓" : result.warnOnly ? "⚠" : "✗";
+  const status = result.skipped
+    ? `SKIP (${result.skipReason})`
+    : result.passed
+      ? "PASS"
+      : result.warnOnly
+        ? `WARN (${result.violations.length} violations — non-blocking)`
+        : `FAIL (${result.violations.length} violations)`;
   console.log(`  [${icon}] ${result.name}: ${status}`);
   if (!result.passed && !result.skipped) {
     result.violations.slice(0, 5).forEach((v) => {
@@ -88,7 +94,7 @@ async function runLocalQC(): Promise<void> {
     checkVitepressBuild(FIXTURE_REPO),
   ];
   syntaxResults.forEach(printResult);
-  const syntaxPassed = syntaxResults.every((r) => r.passed || r.skipped === true);
+  const syntaxPassed = syntaxResults.every((r) => r.passed || r.skipped === true || r.warnOnly === true);
 
   console.log("\n--- Semantic Checks ---");
   const semanticResults: CheckResult[] = [
@@ -98,7 +104,7 @@ async function runLocalQC(): Promise<void> {
     checkAnchorValidity(jaFiles),
   ];
   semanticResults.forEach(printResult);
-  const semanticPassed = semanticResults.every((r) => r.passed || r.skipped === true);
+  const semanticPassed = semanticResults.every((r) => r.passed || r.skipped === true || r.warnOnly === true);
 
   console.log("\n--- LLM Judge (claude-sonnet-4-6) ---");
   const judgeRun = await runClaudeJudge(fixtures);

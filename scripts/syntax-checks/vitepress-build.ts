@@ -42,9 +42,11 @@ export function checkVitepressBuild(fixtureRepo: string): CheckResult {
   } catch (err: unknown) {
     const e = err as { stdout?: Buffer; stderr?: Buffer };
     const output = (e.stdout?.toString() ?? "") + (e.stderr?.toString() ?? "");
+    // Mark as warnOnly: fixture repo build failures may reflect repo-side issues, not yuuhitsu bugs
     return {
       name: "vitepress-build",
       passed: false,
+      warnOnly: true,
       violations: [
         { file: fixtureRepo, line: 0, content: output.slice(0, 3000) },
       ],

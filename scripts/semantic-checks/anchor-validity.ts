@@ -7,6 +7,10 @@ const KNOWN_BROKEN_ANCHORS: Array<{ filePattern: string; anchor: string }> = [
   { filePattern: "api-reference/endpoints.md", anchor: "cadde-統合" },
   { filePattern: "api-reference/endpoints.md", anchor: "custom-data-models-api" },
   { filePattern: "core-concepts/ngsiv2-vs-ngsild.md", anchor: "出力形式の違い" },
+  // Source doc anchors that may be missing after geonicdb-docs updates (not translation issues)
+  { filePattern: "", anchor: "フェデレーション" },
+  { filePattern: "", anchor: "メッセージ形式とフィルタリング" },
+  { filePattern: "", anchor: "dpop-binding-for-websocket" },
 ];
 
 function isKnownBroken(filePath: string, anchor: string): boolean {

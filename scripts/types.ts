@@ -16,6 +16,7 @@ export interface CheckResult {
   violations: Violation[];
   skipped?: boolean;
   skipReason?: string;
+  warnOnly?: boolean;
   error?: string;
 }
 
