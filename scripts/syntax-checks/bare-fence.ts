@@ -12,7 +12,7 @@ export function checkBareFence(jaFiles: string[]): CheckResult {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      const m = line.match(/^(`{3,}|~{3,})(.*)/);
+      const m = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)/);
       if (!m) continue;
 
       const marker = m[1][0];
