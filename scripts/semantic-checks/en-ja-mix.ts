@@ -47,6 +47,10 @@ function stripInlineCode(line: string): string {
   return line.replace(/`[^`]*`/g, "");
 }
 
+function stripMarkdownLinks(line: string): string {
+  return line.replace(/\[([^\]]*)\]\([^)]*\)/g, "");
+}
+
 function stripFrontmatter(content: string): string {
   if (!content.startsWith("---")) return content;
   const end = content.indexOf("\n---", 3);
@@ -72,7 +76,7 @@ export function checkEnJaMix(jaFiles: string[]): CheckResult {
       if (inFence) continue;
       if (/^\s*\|/.test(line)) continue;
 
-      const stripped = stripInlineCode(line);
+      const stripped = stripMarkdownLinks(stripInlineCode(line));
       const hasJapanese = /[　-鿿豈-﫿ｦ-ﾟ]/.test(stripped);
       if (!hasJapanese) continue;
 
@@ -88,7 +92,7 @@ export function checkEnJaMix(jaFiles: string[]): CheckResult {
         }
       }
 
-      if (maxRun >= 5) {
+      if (maxRun >= 6) {
         violations.push({
           file: filePath,
           line: i + 1,

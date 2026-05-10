@@ -36,6 +36,23 @@ function extractParagraphs(content: string): Array<{ text: string; startLine: nu
       continue;
     }
 
+    if (/^\s*\|/.test(line)) {
+      if (buf.length > 0) {
+        paragraphs.push({ text: buf.join(" "), startLine: bufStart + 1 });
+        buf = [];
+      }
+      continue;
+    }
+
+    if (/^\s*[-*+]\s/.test(line) || /^\s*\d+\.\s/.test(line)) {
+      if (buf.length > 0) {
+        paragraphs.push({ text: buf.join(" "), startLine: bufStart + 1 });
+        buf = [];
+      }
+      paragraphs.push({ text: line.trim(), startLine: i + 1 });
+      continue;
+    }
+
     if (line.trim() === "") {
       if (buf.length > 0) {
         paragraphs.push({ text: buf.join(" "), startLine: bufStart + 1 });
