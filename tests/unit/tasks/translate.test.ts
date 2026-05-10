@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { writeFileSync, readFileSync, mkdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { translateFile, splitIntoChunks, DEFAULT_MAX_NODES_PER_BATCH } from "../../../src/tasks/translate.js";
+import { translateFile, splitIntoChunks, DEFAULT_MAX_TOKENS_PER_BATCH } from "../../../src/tasks/translate.js";
 
 /**
  * Create a mock provider that returns a JSON translations response.
@@ -722,14 +722,15 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
     ).rejects.toThrow(/invalid translation payload/);
   });
 
-  describe("maxNodesPerBatch splitting (BUG-421-dense-chunk fix)", () => {
-    it("should export DEFAULT_MAX_NODES_PER_BATCH = 200", () => {
-      expect(DEFAULT_MAX_NODES_PER_BATCH).toBe(200);
+  describe("maxTokensPerBatch token-based splitting (0.3.0 paragraph-level batching)", () => {
+    it("should export DEFAULT_MAX_TOKENS_PER_BATCH = 4000", () => {
+      expect(DEFAULT_MAX_TOKENS_PER_BATCH).toBe(4000);
     });
 
-    it("should split dense chunk into sub-batches when nodes exceed maxNodesPerBatch", async () => {
-      // 300 paragraphs → 300 text nodes in one chunk (maxChunkLines=10000)
-      const lines = Array.from({ length: 300 }, (_, i) => `Dense paragraph ${i}.`);
+    it("should split into multiple batches when token count exceeds maxTokensPerBatch", async () => {
+      // 30 paragraphs of "Paragraph text XX." (~18 chars ≈ 5 tokens each)
+      // With maxTokensPerBatch=20: each batch holds ~4 paragraphs → multiple calls
+      const lines = Array.from({ length: 30 }, (_, i) => `Paragraph text ${String(i).padStart(2, "0")}.`);
       const content = lines.join("\n\n");
       const inputPath = join(tempDir, "dense.md");
       const outputPath = join(tempDir, "dense.ja.md");
@@ -743,23 +744,23 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
         outputPath,
         targetLang: "ja",
         maxChunkLines: 10000,
-        maxNodesPerBatch: 100,
+        maxTokensPerBatch: 20,
       });
 
-      // 300 nodes / 100 per batch = 3 calls
-      expect(mockProvider.chat).toHaveBeenCalledTimes(3);
+      // With token-based batching (maxTokensPerBatch=20), multiple API calls expected
+      expect(mockProvider.chat.mock.calls.length).toBeGreaterThan(1);
 
-      // Each call should have at most 100 segments
+      // Each call must have fewer segments than the total (confirming splits occurred)
       for (const call of mockProvider.chat.mock.calls) {
         const userMsg = call[0].messages.find((m: any) => m.role === "user");
         const parsed = JSON.parse(userMsg.content);
-        expect(parsed.segments.length).toBeLessThanOrEqual(100);
+        expect(parsed.segments.length).toBeLessThan(30);
       }
     });
 
-    it("should not split sparse chunk when nodes <= maxNodesPerBatch", async () => {
-      // 100 paragraphs → 100 text nodes (well within maxNodesPerBatch=200)
-      const lines = Array.from({ length: 100 }, (_, i) => `Sparse paragraph ${i}.`);
+    it("should not split when all blocks fit within maxTokensPerBatch", async () => {
+      // 5 short paragraphs, each ~4 tokens — all fit in maxTokensPerBatch=10000
+      const lines = Array.from({ length: 5 }, (_, i) => `Short ${i}.`);
       const content = lines.join("\n\n");
       const inputPath = join(tempDir, "sparse.md");
       const outputPath = join(tempDir, "sparse.ja.md");
@@ -773,44 +774,17 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
         outputPath,
         targetLang: "ja",
         maxChunkLines: 10000,
-        maxNodesPerBatch: 200,
+        maxTokensPerBatch: 10000,
       });
 
-      // 100 nodes / 200 per batch = 1 call
+      // All 5 blocks fit in one batch → 1 call
       expect(mockProvider.chat).toHaveBeenCalledTimes(1);
     });
 
-    it("should handle boundary: exactly maxNodesPerBatch nodes stays in a single batch", async () => {
-      // 200 paragraphs with maxNodesPerBatch=200 → exactly 1 batch
-      const lines = Array.from({ length: 200 }, (_, i) => `Boundary node ${i}.`);
-      const content = lines.join("\n\n");
-      const inputPath = join(tempDir, "boundary.md");
-      const outputPath = join(tempDir, "boundary.ja.md");
-      writeFileSync(inputPath, content);
-
-      const mockProvider = createMockProvider();
-
-      await translateFile({
-        provider: mockProvider,
-        inputPath,
-        outputPath,
-        targetLang: "ja",
-        maxChunkLines: 10000,
-        maxNodesPerBatch: 200,
-      });
-
-      expect(mockProvider.chat).toHaveBeenCalledTimes(1);
-      const userMsg = mockProvider.chat.mock.calls[0][0].messages.find(
-        (m: any) => m.role === "user"
-      );
-      const parsed = JSON.parse(userMsg.content);
-      expect(parsed.segments.length).toBe(200);
-    });
-
-    it("should correctly translate all nodes across sub-batches", async () => {
+    it("should correctly translate all blocks across batches", async () => {
       const textMap: Record<string, string> = {};
       const lines: string[] = [];
-      for (let i = 0; i < 250; i++) {
+      for (let i = 0; i < 20; i++) {
         const text = `Source text ${i}.`;
         textMap[text] = `翻訳テキスト ${i}。`;
         lines.push(text);
@@ -828,17 +802,17 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
         outputPath,
         targetLang: "ja",
         maxChunkLines: 10000,
-        maxNodesPerBatch: 100,
+        maxTokensPerBatch: 20,  // force multiple batches
       });
 
       const output = readFileSync(outputPath, "utf-8");
-      // Verify translations from all 3 sub-batches are present
-      expect(output).toContain("翻訳テキスト 0。");   // batch 1
-      expect(output).toContain("翻訳テキスト 100。"); // batch 2
-      expect(output).toContain("翻訳テキスト 249。"); // batch 3
+      // Verify translations from all batches are present
+      expect(output).toContain("翻訳テキスト 0。");
+      expect(output).toContain("翻訳テキスト 10。");
+      expect(output).toContain("翻訳テキスト 19。");
     });
 
-    it("should throw when maxNodesPerBatch=0 (would cause infinite loop)", async () => {
+    it("should throw when maxTokensPerBatch=0", async () => {
       const inputPath = join(tempDir, "invalid0.md");
       writeFileSync(inputPath, "# Hello\n\nTest.\n");
       const mockProvider = createMockProvider();
@@ -849,12 +823,12 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
           inputPath,
           outputPath: join(tempDir, "out.md"),
           targetLang: "ja",
-          maxNodesPerBatch: 0,
+          maxTokensPerBatch: 0,
         })
-      ).rejects.toThrow(/maxNodesPerBatch must be a positive integer/);
+      ).rejects.toThrow(/maxTokensPerBatch must be a positive integer/);
     });
 
-    it("should throw when maxNodesPerBatch is negative", async () => {
+    it("should throw when maxTokensPerBatch is negative", async () => {
       const inputPath = join(tempDir, "invalid-neg.md");
       writeFileSync(inputPath, "# Hello\n\nTest.\n");
       const mockProvider = createMockProvider();
@@ -865,12 +839,12 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
           inputPath,
           outputPath: join(tempDir, "out.md"),
           targetLang: "ja",
-          maxNodesPerBatch: -1,
+          maxTokensPerBatch: -1,
         })
-      ).rejects.toThrow(/maxNodesPerBatch must be a positive integer/);
+      ).rejects.toThrow(/maxTokensPerBatch must be a positive integer/);
     });
 
-    it("should throw when maxNodesPerBatch is NaN (parseInt of invalid CLI input)", async () => {
+    it("should throw when maxTokensPerBatch is NaN (parseInt of invalid CLI input)", async () => {
       const inputPath = join(tempDir, "invalid-nan.md");
       writeFileSync(inputPath, "# Hello\n\nTest.\n");
       const mockProvider = createMockProvider();
@@ -881,9 +855,9 @@ describe("Translate Task — Structured Output (tool_use) path", () => {
           inputPath,
           outputPath: join(tempDir, "out.md"),
           targetLang: "ja",
-          maxNodesPerBatch: NaN,
+          maxTokensPerBatch: NaN,
         })
-      ).rejects.toThrow(/maxNodesPerBatch must be a positive integer/);
+      ).rejects.toThrow(/maxTokensPerBatch must be a positive integer/);
     });
   });
 });

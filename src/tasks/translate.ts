@@ -2,15 +2,15 @@ import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { dirname, basename, extname, join } from "path";
 import { remark } from "remark";
 import remarkGfm from "remark-gfm";
-import { visit } from "unist-util-visit";
-import type { Text, Root } from "mdast";
+import { visit, SKIP } from "unist-util-visit";
+import type { Root, Paragraph, Heading, PhrasingContent } from "mdast";
 import type { AIProvider, ChatMessage } from "../provider/interface.js";
 import type { GlossaryConfig } from "./glossary.js";
 import { buildGlossaryPrompt } from "./glossary.js";
 
 export const DEFAULT_MAX_CHUNK_LINES = 150;
 const MIN_CHUNK_LINES = 50;
-export const DEFAULT_MAX_NODES_PER_BATCH = 200;
+export const DEFAULT_MAX_TOKENS_PER_BATCH = 4000;
 
 // P-A1: minimum ratio of output characters to input characters (truncation check)
 const MIN_OUTPUT_RATIO = 0.3;
@@ -47,7 +47,7 @@ export interface TranslateOptions {
   templateContent?: string;
   glossaryConfig?: GlossaryConfig;
   maxChunkLines?: number;
-  maxNodesPerBatch?: number;
+  maxTokensPerBatch?: number;
 }
 
 export interface TranslateResult {
@@ -272,25 +272,70 @@ export function restoreCodeBlocks(content: string, map: Map<string, string>): st
 
 // ─── AST-based translation ───────────────────────────────────────────────────
 
-interface TextNodeRef {
-  node: Text;
+interface BlockNodeRef {
   id: number;
+  markdown: string;
+  applyTranslation: (translated: string) => void;
 }
 
 /**
- * Extract all translatable text nodes from an mdast AST.
- * remark AST guarantees text nodes cannot be inside code/inlineCode nodes,
- * so we only skip empty/whitespace-only nodes.
+ * Extract translatable block nodes from an mdast AST.
+ *
+ * Each paragraph and heading is treated as one translation unit, preserving
+ * inline markup (inline code, bold, italic, links) within the block.
+ * This prevents the text-node-level splitting that caused EN/JA mixing in 0.2.x.
  */
-function extractTextNodes(ast: Root): TextNodeRef[] {
-  const nodes: TextNodeRef[] = [];
+function extractBlockNodes(
+  ast: Root,
+  processor: ReturnType<typeof remark>
+): BlockNodeRef[] {
+  const blocks: BlockNodeRef[] = [];
 
-  visit(ast, "text", (node: Text) => {
-    if (!node.value.trim()) return;
-    nodes.push({ node, id: nodes.length });
+  function inlineToMarkdown(children: PhrasingContent[]): string {
+    const tempRoot: Root = { type: "root", children: [{ type: "paragraph", children }] };
+    return processor.stringify(tempRoot).trim();
+  }
+
+  visit(ast, (node) => {
+    if (node.type === "paragraph") {
+      const para = node as Paragraph;
+      const md = inlineToMarkdown(para.children);
+      if (!md) return;
+      blocks.push({
+        id: blocks.length,
+        markdown: md,
+        applyTranslation: (translated: string) => {
+          const parsed = processor.parse(translated.trim()) as Root;
+          const firstPara = parsed.children.find((c) => c.type === "paragraph") as
+            | Paragraph
+            | undefined;
+          if (firstPara?.children.length) {
+            para.children = firstPara.children;
+          }
+        },
+      });
+      return SKIP;
+    }
+    if (node.type === "heading") {
+      const heading = node as Heading;
+      const md = inlineToMarkdown(heading.children as PhrasingContent[]);
+      if (!md) return;
+      blocks.push({
+        id: blocks.length,
+        markdown: md,
+        applyTranslation: (translated: string) => {
+          const parsed = processor.parse(translated.trim()) as Root;
+          const firstNode = parsed.children[0];
+          if (firstNode?.type === "paragraph") {
+            heading.children = (firstNode as Paragraph).children as typeof heading.children;
+          }
+        },
+      });
+      return SKIP;
+    }
   });
 
-  return nodes;
+  return blocks;
 }
 
 /**
@@ -311,7 +356,10 @@ Rules:
 - Preserve proper nouns, code identifiers, URLs, and file paths unchanged
 - Produce natural, fluent text in the target language
 - For Japanese: use full-width punctuation (。、？！), add half-width spaces around English words/numbers
-- Keep product names, abbreviations, and technical terms unchanged (e.g., NGSI-LD, MCP, GeoJSON)`;
+- Keep product names, abbreviations, and technical terms unchanged (e.g., NGSI-LD, MCP, GeoJSON, API, SDK, URL)
+- Preserve all markdown inline formatting: inline code (\`...\`), bold (**...**), italic (*...*), links ([text](url))
+- Each segment is an independent paragraph-level translation unit; translate it as a whole
+- Do not split, merge, or reorder segments`;
 
   let prompt = basePrompt;
 
@@ -358,8 +406,10 @@ Rules:
 - Preserve proper nouns, code identifiers, URLs, and file paths unchanged
 - Produce natural, fluent text in the target language
 - For Japanese: use full-width punctuation (。、？！), add half-width spaces around English words/numbers
-- Keep product names, abbreviations, and technical terms unchanged (e.g., NGSI-LD, MCP, GeoJSON)
-- Each segment is independent; translate it on its own`;
+- Keep product names, abbreviations, and technical terms unchanged (e.g., NGSI-LD, MCP, GeoJSON, API, SDK, URL)
+- Each segment is an independent paragraph-level translation unit; translate it as a whole
+- Preserve all markdown inline formatting: inline code (\`...\`), bold (**...**), italic (*...*), links ([text](url))
+- Do not split, merge, or reorder segments`;
 
   let prompt = basePrompt;
   if (glossaryConfig) {
@@ -422,16 +472,16 @@ function assertValidTranslations(value: unknown): asserts value is Segment[] {
  */
 async function translateBatch(
   provider: AIProvider,
-  nodes: TextNodeRef[],
+  blocks: BlockNodeRef[],
   targetLang: string,
   templateContent?: string,
   glossaryConfig?: GlossaryConfig
 ): Promise<{ usage: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
-  if (nodes.length === 0) {
+  if (blocks.length === 0) {
     return { usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
   }
 
-  const segments: Segment[] = nodes.map(({ node, id }) => ({ id, text: node.value }));
+  const segments: Segment[] = blocks.map(({ markdown, id }) => ({ id, text: markdown }));
 
   // P-A1: track total input character count for truncation detection
   const totalInputChars = segments.reduce((sum, s) => sum + s.text.length, 0);
@@ -484,7 +534,7 @@ async function translateBatch(
   // - no duplicate output IDs (Map silently overwrites; we must detect before)
   // - no unexpected IDs (IDs not present in the input set)
   // - no missing IDs (input ID absent from output)
-  const inputIds = new Set(nodes.map(({ id }) => id));
+  const inputIds = new Set(blocks.map(({ id }) => id));
   const seenOutputIds = new Set<number>();
   const duplicateIds: number[] = [];
   const unexpectedIds: number[] = [];
@@ -511,19 +561,19 @@ async function translateBatch(
   }
 
   const translationMap = new Map(translations.map((t) => [t.id, t.text]));
-  const missingIds = nodes.filter(({ id }) => !translationMap.has(id)).map(({ id }) => id);
+  const missingIds = blocks.filter(({ id }) => !translationMap.has(id)).map(({ id }) => id);
   if (missingIds.length > 0) {
     throw new Error(
-      `[yuuhitsu] translateBatch: partial translation — ${missingIds.length} node(s) missing` +
+      `[yuuhitsu] translateBatch: partial translation — ${missingIds.length} block(s) missing` +
         ` from response (IDs: ${missingIds.join(", ")})`
     );
   }
 
-  // Apply translations back to AST nodes
-  for (const { node, id } of nodes) {
-    const translated = translationMap.get(id);
+  // Apply translations back to AST nodes via block closures
+  for (const block of blocks) {
+    const translated = translationMap.get(block.id);
     if (translated !== undefined && translated.trim()) {
-      node.value = translated;
+      block.applyTranslation(translated);
     }
   }
 
@@ -566,12 +616,12 @@ export async function translateFile(
     templateContent,
     glossaryConfig,
     maxChunkLines,
-    maxNodesPerBatch,
+    maxTokensPerBatch,
   } = options;
-  if (maxNodesPerBatch !== undefined && (!Number.isInteger(maxNodesPerBatch) || maxNodesPerBatch < 1)) {
-    throw new Error(`maxNodesPerBatch must be a positive integer, got: ${maxNodesPerBatch}`);
+  if (maxTokensPerBatch !== undefined && (!Number.isInteger(maxTokensPerBatch) || maxTokensPerBatch < 1)) {
+    throw new Error(`maxTokensPerBatch must be a positive integer, got: ${maxTokensPerBatch}`);
   }
-  const resolvedMaxNodes = maxNodesPerBatch ?? DEFAULT_MAX_NODES_PER_BATCH;
+  const resolvedMaxTokens = maxTokensPerBatch ?? DEFAULT_MAX_TOKENS_PER_BATCH;
 
   let content: string;
   try {
@@ -603,14 +653,31 @@ export async function translateFile(
     const processor = remark().use(remarkGfm);
     const ast = processor.parse(chunk) as Root;
 
-    // Extract translatable text nodes
-    const textNodes = extractTextNodes(ast);
+    // Extract translatable block nodes (paragraph-level, preserving inline markup)
+    const blockNodes = extractBlockNodes(ast, processor);
 
-    if (textNodes.length > 0) {
-      // Split into sub-batches when node count exceeds maxNodesPerBatch (BUG-421-dense-chunk fix).
-      // Dense files (e.g. changelog) may have 300+ nodes/chunk, causing Claude ID hallucination.
-      for (let batchStart = 0; batchStart < textNodes.length; batchStart += resolvedMaxNodes) {
-        const batch = textNodes.slice(batchStart, batchStart + resolvedMaxNodes);
+    if (blockNodes.length > 0) {
+      // Token-based batching: accumulate blocks until estimated token count exceeds limit.
+      // Each block's markdown length / 4 approximates its token count.
+      const batches: BlockNodeRef[][] = [];
+      let currentBatch: BlockNodeRef[] = [];
+      let currentTokens = 0;
+
+      for (const block of blockNodes) {
+        const blockTokens = Math.ceil(block.markdown.length / 4);
+        if (currentBatch.length > 0 && currentTokens + blockTokens > resolvedMaxTokens) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentTokens = 0;
+        }
+        currentBatch.push(block);
+        currentTokens += blockTokens;
+      }
+      if (currentBatch.length > 0) {
+        batches.push(currentBatch);
+      }
+
+      for (const batch of batches) {
         const { usage } = await translateBatch(
           provider,
           batch,
