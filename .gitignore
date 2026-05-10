@@ -3,3 +3,4 @@ dist/
 .env
 *.log
 .code-review-done
+reports/

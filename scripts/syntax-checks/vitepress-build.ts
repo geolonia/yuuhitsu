@@ -1,0 +1,53 @@
+import { execSync } from "child_process";
+import fs from "fs";
+import path from "path";
+import type { CheckResult } from "../types.js";
+
+export function checkVitepressBuild(fixtureRepo: string): CheckResult {
+  const pkgPath = path.join(fixtureRepo, "package.json");
+  if (!fs.existsSync(pkgPath)) {
+    return {
+      name: "vitepress-build",
+      passed: true,
+      violations: [],
+      skipped: true,
+      skipReason: "Not a full docs repo (missing package.json)",
+    };
+  }
+
+  let scripts: Record<string, string> = {};
+  try {
+    scripts = JSON.parse(fs.readFileSync(pkgPath, "utf-8")).scripts ?? {};
+  } catch {
+    // ignore
+  }
+
+  if (!scripts["docs:build"]) {
+    return {
+      name: "vitepress-build",
+      passed: true,
+      violations: [],
+      skipped: true,
+      skipReason: "No docs:build script found in package.json",
+    };
+  }
+
+  try {
+    execSync("pnpm docs:build", {
+      cwd: fixtureRepo,
+      stdio: "pipe",
+      timeout: 300_000,
+    });
+    return { name: "vitepress-build", passed: true, violations: [] };
+  } catch (err: unknown) {
+    const e = err as { stdout?: Buffer; stderr?: Buffer };
+    const output = (e.stdout?.toString() ?? "") + (e.stderr?.toString() ?? "");
+    return {
+      name: "vitepress-build",
+      passed: false,
+      violations: [
+        { file: fixtureRepo, line: 0, content: output.slice(0, 3000) },
+      ],
+    };
+  }
+}
