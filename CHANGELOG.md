@@ -25,7 +25,9 @@
   - `tests/fixtures/reactivcore-like-fence-heavy.md`: 100 code fences (yaml/json/bash/python/typescript/sql/javascript) modeled on real reactivcore-rules.md structure
 
 ### Fixed (Local QC)
-- **[fix] cmd_462 — local-qc.ts: fix fixture path for changelog (was `changelog/index.md`, now `changelog.md`)**
+- **[fix] cmd_463 — local-qc.ts: restore correct changelog fixture path**
+  - cmd_462 mistakenly reverted cmd_458's fix, changing `docs/en/changelog/index.md` back to `docs/en/changelog.md` (the latter no longer exists since geonicdb-docs cmd_449 changelog paging split)
+  - cmd_463 restores `docs/en/changelog/index.md` so Local QC finds the fixture in the current geonicdb-docs main
 
 ## [0.3.0] - 2026-05-10
 
