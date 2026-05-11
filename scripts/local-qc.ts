@@ -21,7 +21,8 @@ const FULL_DOCS_EN_FILES = [
   "docs/en/api-reference/endpoints.md",
   "docs/en/core-concepts/ngsiv2-vs-ngsild.md",
   "docs/en/features/subscriptions.md",
-  "docs/en/changelog.md",
+  // cmd_449 で changelog.md は分割削除 → changelog/{0.3.x,0.4.x,...,index,unreleased}.md
+  "docs/en/changelog/index.md",
 ];
 
 function buildFixtures(repo: string): FixtureFile[] {
