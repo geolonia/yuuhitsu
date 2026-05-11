@@ -15,6 +15,7 @@ export const translateCommand = new Command("translate")
   .option("--output-dir <dir>", "Output directory for batch translation (preserves directory structure)")
   .option("--max-chunk-lines <number>", "Maximum lines per translation chunk (default: 300)", parseInt)
   .option("--max-tokens-per-batch <number>", "Maximum estimated tokens per API batch call (default: 4000)", parseInt)
+  .option("--system-prompt-suffix <text>", "Append text to the system prompt (e.g. contextual retry hints)")
   .action(async (opts, cmd) => {
     const globalOpts = cmd.parent?.opts() ?? {};
     const configPath: string = globalOpts.config ?? "./yuuhitsu.config.yaml";
@@ -93,6 +94,7 @@ export const translateCommand = new Command("translate")
           targetLang: opts.lang,
           maxChunkLines: opts.maxChunkLines,
           maxTokensPerBatch: opts.maxTokensPerBatch,
+          systemPromptSuffix: opts.systemPromptSuffix,
         });
 
         process.stdout.write(

@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-12
+
+### Fixed
+- **[fix] cmd_462 — translateBatch: filter and retry on unexpected IDs in structured output response (Q1=B)**
+  - Claude tool_use (structured output path) occasionally hallucinates IDs beyond the batch boundary (e.g. returns ID 67 in a batch of IDs 0–66)
+  - Root cause: no explicit ID constraint in system prompt; Claude infers IDs from pattern rather than from input
+  - Fix: `buildStructuredSystemPrompt` now appends `CRITICAL` constraint: *"Use ONLY the IDs provided in the input. Do NOT invent or hallucinate IDs beyond what was given."*
+  - Fix: `translateBatch` (structured path) filters unexpected IDs from response and retries up to 3 times with corrective context: *"RETRY CORRECTION: Previous response contained unexpected IDs: [X]. Use ONLY: [valid IDs]."*
+  - New `--system-prompt-suffix <text>` CLI option: appends custom text to the system prompt (enables geonicdb-docs HF3 contextual retry)
+  - Also adds: `systemPromptSuffix?: string` field to `TranslateOptions`
+- **[fix] cmd_462 — skip fence-only paragraphs from translation (Q3=A)**
+  - `extractBlockNodes` now skips paragraph nodes whose stringified content matches `/^(\`{3,}|~{3,})\S*$/` (bare fence marker without closing fence)
+  - Prevents LLM from mangling lone `` ``` `` or `~~~` markers that appear as paragraphs in malformed markdown
+- **[fix] cmd_462 — system prompt includes code fence guard constraint**
+  - `buildStructuredSystemPrompt` appends: *"Do NOT add new code fences (`` ``` ``) that are not present in the original input."*
+  - Addresses fence count mismatch failure (reactivcore-rules.md 190→195 fences)
+
+### Added
+- **[test] cmd_462 — integration fixtures for ID boundary and fence-heavy documents**
+  - `tests/fixtures/large-paragraphs-67-blocks.md`: 73 paragraphs + headings for testing ID boundary robustness (≥70 translatable blocks per chunk)
+  - `tests/fixtures/reactivcore-like-fence-heavy.md`: 100 code fences (yaml/json/bash/python/typescript/sql/javascript) modeled on real reactivcore-rules.md structure
+
+### Fixed (Local QC)
+- **[fix] cmd_462 — local-qc.ts: fix fixture path for changelog (was `changelog/index.md`, now `changelog.md`)**
+
 ## [0.3.0] - 2026-05-10
 
 ### Changed (Breaking)

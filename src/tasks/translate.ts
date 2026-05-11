@@ -48,6 +48,8 @@ export interface TranslateOptions {
   glossaryConfig?: GlossaryConfig;
   maxChunkLines?: number;
   maxTokensPerBatch?: number;
+  /** Optional suffix appended to the system prompt (e.g. contextual retry hints). */
+  systemPromptSuffix?: string;
 }
 
 export interface TranslateResult {
@@ -301,6 +303,8 @@ function extractBlockNodes(
       const para = node as Paragraph;
       const md = inlineToMarkdown(para.children);
       if (!md) return;
+      // Skip fence-only paragraphs (bare ``` or ~~~) — translating them risks LLM mangling
+      if (/^(`{3,}|~{3,})\S*$/.test(md)) return;
       blocks.push({
         id: blocks.length,
         markdown: md,
@@ -395,7 +399,8 @@ Example output:
 function buildStructuredSystemPrompt(
   targetLang: string,
   templateContent?: string,
-  glossaryConfig?: GlossaryConfig
+  glossaryConfig?: GlossaryConfig,
+  systemPromptSuffix?: string
 ): string {
   const basePrompt = templateContent
     ? templateContent.replace(/\{\{targetLanguage\}\}/g, targetLang)
@@ -416,6 +421,17 @@ Rules:
     const glossarySection = buildGlossaryPrompt(glossaryConfig, targetLang);
     if (glossarySection) prompt += glossarySection;
   }
+
+  prompt += `
+
+CRITICAL: Use ONLY the IDs provided in the input. Do NOT invent or hallucinate IDs beyond what was given. If you receive N segments (IDs X through Y), your response MUST contain ONLY IDs within that exact range.
+
+CRITICAL: Do NOT add new code fences (\`\`\`) that are not present in the original input. Do not convert descriptive text about code fences into actual code fence markers.`;
+
+  if (systemPromptSuffix) {
+    prompt += `\n\n${systemPromptSuffix}`;
+  }
+
   return prompt;
 }
 
@@ -470,18 +486,24 @@ function assertValidTranslations(value: unknown): asserts value is Segment[] {
  *
  * In both paths the 1:1 ID mapping is validated and an error is thrown on mismatch.
  */
+/** Maximum retry attempts for structured output on unexpected IDs. */
+const MAX_STRUCTURED_ID_RETRIES = 3;
+
 async function translateBatch(
   provider: AIProvider,
   blocks: BlockNodeRef[],
   targetLang: string,
   templateContent?: string,
-  glossaryConfig?: GlossaryConfig
+  glossaryConfig?: GlossaryConfig,
+  systemPromptSuffix?: string
 ): Promise<{ usage: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
   if (blocks.length === 0) {
     return { usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
   }
 
   const segments: Segment[] = blocks.map(({ markdown, id }) => ({ id, text: markdown }));
+  const inputIds = new Set(blocks.map(({ id }) => id));
+  const sortedInputIds = [...inputIds].sort((a, b) => a - b);
 
   // P-A1: track total input character count for truncation detection
   const totalInputChars = segments.reduce((sum, s) => sum + s.text.length, 0);
@@ -490,15 +512,48 @@ async function translateBatch(
   let usage: { promptTokens: number; completionTokens: number; totalTokens: number };
 
   if (provider.translateStructured) {
-    // Structured output path: provider (Claude) enforces JSON schema via tool_use
-    const systemPrompt = buildStructuredSystemPrompt(targetLang, templateContent, glossaryConfig);
-    const result = await provider.translateStructured({ segments, systemPrompt });
-    assertValidTranslations(result.translations);
-    translations = result.translations;
-    usage = result.usage;
+    // Structured output path: provider (Claude) enforces JSON schema via tool_use.
+    // Internal retry loop: on unexpected IDs, filter + retry with corrective context.
+    let currentSuffix = systemPromptSuffix;
+    let lastUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+    for (let attempt = 0; attempt <= MAX_STRUCTURED_ID_RETRIES; attempt++) {
+      const systemPrompt = buildStructuredSystemPrompt(
+        targetLang, templateContent, glossaryConfig, currentSuffix
+      );
+      const result = await provider.translateStructured({ segments, systemPrompt });
+      assertValidTranslations(result.translations);
+      lastUsage = result.usage;
+
+      // Detect unexpected IDs (IDs not present in the input set)
+      const unexpectedIds = result.translations
+        .filter((t) => !inputIds.has(t.id))
+        .map((t) => t.id);
+
+      if (unexpectedIds.length > 0) {
+        if (attempt < MAX_STRUCTURED_ID_RETRIES) {
+          const suffix = `RETRY CORRECTION: The previous response contained unexpected IDs: [${unexpectedIds.join(", ")}]. ` +
+            `You MUST use ONLY the following IDs: [${sortedInputIds.join(", ")}]. ` +
+            `Do not invent any other IDs.`;
+          currentSuffix = currentSuffix ? `${currentSuffix}\n\n${suffix}` : suffix;
+          console.warn(
+            `[yuuhitsu] translateBatch: unexpected IDs [${unexpectedIds.join(", ")}], retrying (attempt ${attempt + 1}/${MAX_STRUCTURED_ID_RETRIES})`
+          );
+          continue;
+        }
+        throw new Error(
+          `[yuuhitsu] translateBatch: unexpected IDs in response after ${MAX_STRUCTURED_ID_RETRIES} retries (IDs: ${unexpectedIds.join(", ")})`
+        );
+      }
+
+      // No unexpected IDs — proceed with filtered valid translations
+      translations = result.translations.filter((t) => inputIds.has(t.id));
+      usage = lastUsage;
+      break;
+    }
 
     // P-A1: warn on truncation (compare translated chars to input chars)
-    const totalOutputChars = translations.reduce((sum, t) => sum + t.text.length, 0);
+    const totalOutputChars = translations!.reduce((sum, t) => sum + t.text.length, 0);
     if (totalInputChars > 0 && totalOutputChars < totalInputChars * MIN_OUTPUT_RATIO) {
       console.warn(
         `[yuuhitsu] translateBatch: output may be truncated ` +
@@ -532,21 +587,16 @@ async function translateBatch(
 
   // Validate strict 1:1 ID mapping (both paths):
   // - no duplicate output IDs (Map silently overwrites; we must detect before)
-  // - no unexpected IDs (IDs not present in the input set)
   // - no missing IDs (input ID absent from output)
-  const inputIds = new Set(blocks.map(({ id }) => id));
+  // Note: unexpected IDs are already handled above for the structured path.
   const seenOutputIds = new Set<number>();
   const duplicateIds: number[] = [];
-  const unexpectedIds: number[] = [];
 
-  for (const t of translations) {
+  for (const t of translations!) {
     if (seenOutputIds.has(t.id)) {
       duplicateIds.push(t.id);
     } else {
       seenOutputIds.add(t.id);
-    }
-    if (!inputIds.has(t.id)) {
-      unexpectedIds.push(t.id);
     }
   }
   if (duplicateIds.length > 0) {
@@ -554,13 +604,21 @@ async function translateBatch(
       `[yuuhitsu] translateBatch: duplicate IDs in response (IDs: ${duplicateIds.join(", ")})`
     );
   }
-  if (unexpectedIds.length > 0) {
-    throw new Error(
-      `[yuuhitsu] translateBatch: unexpected IDs in response (IDs: ${unexpectedIds.join(", ")})`
-    );
+
+  // For text mode: still check for unexpected IDs (not retried)
+  if (!provider.translateStructured) {
+    const unexpectedIds: number[] = [];
+    for (const t of translations!) {
+      if (!inputIds.has(t.id)) unexpectedIds.push(t.id);
+    }
+    if (unexpectedIds.length > 0) {
+      throw new Error(
+        `[yuuhitsu] translateBatch: unexpected IDs in response (IDs: ${unexpectedIds.join(", ")})`
+      );
+    }
   }
 
-  const translationMap = new Map(translations.map((t) => [t.id, t.text]));
+  const translationMap = new Map(translations!.map((t) => [t.id, t.text]));
   const missingIds = blocks.filter(({ id }) => !translationMap.has(id)).map(({ id }) => id);
   if (missingIds.length > 0) {
     throw new Error(
@@ -577,7 +635,7 @@ async function translateBatch(
     }
   }
 
-  return { usage };
+  return { usage: usage! };
 }
 
 function resolveOutputPath(
@@ -617,6 +675,7 @@ export async function translateFile(
     glossaryConfig,
     maxChunkLines,
     maxTokensPerBatch,
+    systemPromptSuffix,
   } = options;
   if (maxTokensPerBatch !== undefined && (!Number.isInteger(maxTokensPerBatch) || maxTokensPerBatch < 1)) {
     throw new Error(`maxTokensPerBatch must be a positive integer, got: ${maxTokensPerBatch}`);
@@ -683,7 +742,8 @@ export async function translateFile(
           batch,
           targetLang,
           templateContent,
-          glossaryConfig
+          glossaryConfig,
+          systemPromptSuffix
         );
         totalUsage.promptTokens += usage.promptTokens;
         totalUsage.completionTokens += usage.completionTokens;
