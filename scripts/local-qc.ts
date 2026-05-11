@@ -21,7 +21,7 @@ const FULL_DOCS_EN_FILES = [
   "docs/en/api-reference/endpoints.md",
   "docs/en/core-concepts/ngsiv2-vs-ngsild.md",
   "docs/en/features/subscriptions.md",
-  "docs/en/changelog/index.md",
+  "docs/en/changelog.md",
 ];
 
 function buildFixtures(repo: string): FixtureFile[] {
