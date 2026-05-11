@@ -72,11 +72,9 @@ export class ClaudeProvider implements AIProvider {
     const response = await this.client.messages.create({
       model: request.model || this.model,
       max_tokens: request.maxTokens ?? 16384,
+      temperature: request.temperature ?? 0,
       ...(systemMessage ? { system: systemMessage.content } : {}),
       messages: userMessages,
-      ...(request.temperature !== undefined
-        ? { temperature: request.temperature }
-        : {}),
     });
 
     const textBlock = response.content.find((b) => b.type === "text");
@@ -105,11 +103,9 @@ export class ClaudeProvider implements AIProvider {
     const stream = this.client.messages.stream({
       model: request.model || this.model,
       max_tokens: request.maxTokens ?? 16384,
+      temperature: request.temperature ?? 0,
       ...(systemMessage ? { system: systemMessage.content } : {}),
       messages: userMessages,
-      ...(request.temperature !== undefined
-        ? { temperature: request.temperature }
-        : {}),
     });
 
     for await (const event of stream) {
@@ -134,6 +130,7 @@ export class ClaudeProvider implements AIProvider {
     const response = await this.client.messages.create({
       model: request.model || this.model,
       max_tokens: request.maxTokens ?? 16384,
+      temperature: 0,
       system: request.systemPrompt,
       messages: [
         {

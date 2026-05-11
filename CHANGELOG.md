@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-13
+
+### Fixed
+- **[fix] cmd_465 — Set temperature=0 in translateStructured() and chat() to eliminate stochastic code fence over-generation (Q1=A)**
+  - `translateStructured()` previously used the Anthropic API default temperature (1.0), causing probabilistic variation in outputs
+  - `chat()` and `chatStream()` now default to temperature=0 when `request.temperature` is not explicitly set
+  - Root cause confirmed by cmd_464 軍師 deep review: reactivcore-rules.md 190→195 fence failures were stochastic events, not deterministic bugs
+
 ## [0.3.1] - 2026-05-12
 
 ### Fixed
