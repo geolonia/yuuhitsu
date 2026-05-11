@@ -349,7 +349,8 @@ function extractBlockNodes(
 function buildBatchSystemPrompt(
   targetLang: string,
   templateContent?: string,
-  glossaryConfig?: GlossaryConfig
+  glossaryConfig?: GlossaryConfig,
+  systemPromptSuffix?: string
 ): string {
   const basePrompt = templateContent
     ? templateContent.replace(/\{\{targetLanguage\}\}/g, targetLang)
@@ -388,6 +389,10 @@ Example input:
 
 Example output:
 {"translations": [{"id": 0, "text": "こんにちは世界"}, {"id": 1, "text": "これはテストです。"}]}`;
+
+  if (systemPromptSuffix) {
+    prompt += `\n\n${systemPromptSuffix}`;
+  }
 
   return prompt;
 }
@@ -515,7 +520,7 @@ async function translateBatch(
     // Structured output path: provider (Claude) enforces JSON schema via tool_use.
     // Internal retry loop: on unexpected IDs, filter + retry with corrective context.
     let currentSuffix = systemPromptSuffix;
-    let lastUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    const accumulatedUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
     for (let attempt = 0; attempt <= MAX_STRUCTURED_ID_RETRIES; attempt++) {
       const systemPrompt = buildStructuredSystemPrompt(
@@ -523,7 +528,9 @@ async function translateBatch(
       );
       const result = await provider.translateStructured({ segments, systemPrompt });
       assertValidTranslations(result.translations);
-      lastUsage = result.usage;
+      accumulatedUsage.promptTokens += result.usage.promptTokens;
+      accumulatedUsage.completionTokens += result.usage.completionTokens;
+      accumulatedUsage.totalTokens += result.usage.totalTokens;
 
       // Detect unexpected IDs (IDs not present in the input set)
       const unexpectedIds = result.translations
@@ -548,7 +555,7 @@ async function translateBatch(
 
       // No unexpected IDs — proceed with filtered valid translations
       translations = result.translations.filter((t) => inputIds.has(t.id));
-      usage = lastUsage;
+      usage = accumulatedUsage;
       break;
     }
 
@@ -562,7 +569,7 @@ async function translateBatch(
     }
   } else {
     // Text mode fallback: Gemini / Ollama
-    const systemPrompt = buildBatchSystemPrompt(targetLang, templateContent, glossaryConfig);
+    const systemPrompt = buildBatchSystemPrompt(targetLang, templateContent, glossaryConfig, systemPromptSuffix);
     const messages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
       { role: "user", content: JSON.stringify({ segments }) },

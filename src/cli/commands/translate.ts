@@ -57,6 +57,7 @@ export const translateCommand = new Command("translate")
           dryRun,
           verbose,
           maxTokensPerBatch: opts.maxTokensPerBatch,
+          systemPromptSuffix: opts.systemPromptSuffix,
         });
       } else {
         // Single file translation mode (original behavior)

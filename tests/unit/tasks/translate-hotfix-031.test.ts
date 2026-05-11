@@ -168,37 +168,18 @@ describe("0.3.1 hotfix — Part C: fence-only paragraph skip", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("should not send fence-only paragraphs to the LLM", async () => {
-    const inputPath = join(tempDir, "input.md");
-    const outputPath = join(tempDir, "output.md");
-    // A document with a standalone ``` paragraph (not a code block — missing closing)
-    // This tests that a paragraph whose content is just ``` is not translated
-    const content = `# Title
-
-Normal paragraph here.
-
-\`\`\`yaml
-
-Another normal paragraph.
-`;
-    writeFileSync(inputPath, content);
-
-    const capturedSegments: Array<{ id: number; text: string }>[] = [];
-    const provider = createStructuredMockProvider(async (req) => {
-      capturedSegments.push(req.segments);
-      return {
-        translations: req.segments.map((s) => ({ id: s.id, text: s.text })),
-        usage: { promptTokens: 50, completionTokens: 100, totalTokens: 150 },
-      };
-    });
-
-    await translateFile({ provider, inputPath, outputPath, targetLang: "ja" });
-
-    // Verify no segment contains only backtick sequences
-    const allSegments = capturedSegments.flat();
-    for (const seg of allSegments) {
-      expect(seg.text).not.toMatch(/^(`{3,}|~{3,})\S*$/);
-    }
+  it("fence-only guard regex matches bare fence markers and ignores normal content", () => {
+    // This guard is applied inside extractBlockNodes() before sending segments to the LLM.
+    // Standard CommonMark/GFM always parses ``` lines as code nodes (not paragraphs), so
+    // the guard cannot be exercised through translateFile(). We test the regex directly.
+    const fenceGuardRegex = /^(`{3,}|~{3,})\S*$/;
+    expect(fenceGuardRegex.test("```")).toBe(true);
+    expect(fenceGuardRegex.test("```yaml")).toBe(true);
+    expect(fenceGuardRegex.test("~~~python")).toBe(true);
+    expect(fenceGuardRegex.test("````")).toBe(true);
+    expect(fenceGuardRegex.test("Normal paragraph text")).toBe(false);
+    expect(fenceGuardRegex.test("``` text after space")).toBe(false);
+    expect(fenceGuardRegex.test("``")).toBe(false);
   });
 
   it("should translate normal paragraphs adjacent to code blocks", async () => {
